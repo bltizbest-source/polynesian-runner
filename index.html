@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polynesian Runner</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap" rel="stylesheet">
+</head>
+
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas" width="800" height="400"></canvas>
+
+        <div id="start-screen" class="screen">
+            <h1>Polynesian Runner</h1>
+            <div class="desktop-controls">
+                <p>Press Space or Up Arrow to Jump</p>
+                <p>Hold Down Arrow to Duck</p>
+            </div>
+            <div class="mobile-controls">
+                <p>Tap Right Half to Jump</p>
+                <p>Hold Left Half to Duck</p>
+            </div>
+            <button id="start-btn">Start Game</button>
+        </div>
+
+        <div id="game-over-screen" class="screen hidden">
+            <h1>Game Over</h1>
+            <p>Score: <span id="final-score">0</span></p>
+            <p>High Score: <span id="final-highscore">0</span></p>
+            <button id="restart-btn">Try Again</button>
+        </div>
+
+        <div id="hud">
+            Score: <span id="score">0</span>
+        </div>
+        <div id="highscore-hud">
+            High Score: <span id="highscore">0</span>
+        </div>
+
+    </div>
+
+    <!-- Hidden images for assets -->
+    <div style="display:none;">
+        <img id="player-img" src="assets/player.webp" alt="Player">
+        <img id="obstacle-img" src="assets/obstacle.webp" alt="Obstacle">
+        <img id="gem-img" src="assets/gem.webp" alt="Gem">
+    </div>
+
+    <script src="game.js"></script>
+</body>
+
+</html>
