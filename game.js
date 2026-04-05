@@ -51,10 +51,10 @@ const playerImg = document.getElementById('player-img');
 const obstacleImg = document.getElementById('obstacle-img');
 const gemImg = document.getElementById('gem-img');
 
-// Use the new sprite sheet and bust browser cache
-playerImg.src = 'assets/player_spritesheet.png?v=' + Date.now();
-obstacleImg.src = 'assets/obstacle.webp?v=' + Date.now();
-gemImg.src = 'assets/gem.webp?v=' + Date.now();
+// Use the original sprite sheet and trust the Service Worker for cache management
+playerImg.src = 'assets/player_spritesheet.png';
+obstacleImg.src = 'assets/obstacle.webp';
+gemImg.src = 'assets/gem.webp';
 
 // Game State
 let gameState = 'START'; // START, PLAYING, GAMEOVER
