@@ -1,24 +1,24 @@
 {
   "name": "Polynesian Runner",
   "short_name": "Poly Runner",
-  "description": "A vibrant Polynesian-themed runner game with offline support.",
+  "description": "Run, jump, and slide through a jungle temple passage.",
   "start_url": "./index.html",
   "display": "standalone",
-  "orientation": "landscape",
-  "background_color": "#2c3e50",
-  "theme_color": "#2c3e50",
+  "orientation": "any",
+  "background_color": "#19372d",
+  "theme_color": "#102821",
   "icons": [
     {
-      "src": "favicon.png",
+      "src": "assets/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "favicon.png",
+      "src": "assets/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ],
   "categories": ["games", "entertainment"]

@@ -1,70 +1,18 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Polynesian Runner</title>
-    <link rel="stylesheet" href="style.css">
-    <link rel="icon" href="favicon.png" type="image/png">
-    <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#2c3e50">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <link rel="apple-touch-icon" href="favicon.png">
-    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&display=swap" rel="stylesheet">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#102821"><title>Polynesian Runner</title>
+<link rel="icon" href="favicon.png" sizes="32x32"><link rel="icon" href="assets/temple-mark.svg" type="image/svg+xml" sizes="any"><link rel="apple-touch-icon" href="assets/apple-touch-icon.png"><link rel="manifest" href="manifest.json"><link rel="stylesheet" href="style.css">
 </head>
-
-<body>
-    <div id="game-container">
-        <canvas id="gameCanvas" width="800" height="400"></canvas>
-
-        <div id="start-screen" class="screen">
-            <h1>Polynesian Runner</h1>
-            <div class="desktop-controls">
-                <p>Press Space or Up Arrow to Jump</p>
-                <p>Hold Down Arrow to Duck</p>
-            </div>
-            <div class="mobile-controls">
-                <p>Tap Right Half to Jump</p>
-                <p>Hold Left Half to Duck</p>
-            </div>
-            <button id="start-btn">Start Game</button>
-        </div>
-
-        <div id="game-over-screen" class="screen hidden">
-            <h1>Game Over</h1>
-            <p>Score: <span id="final-score">0</span></p>
-            <p>High Score: <span id="final-highscore">0</span></p>
-            <button id="restart-btn">Try Again</button>
-        </div>
-
-        <div id="hud">
-            Score: <span id="score">0</span>
-        </div>
-        <div id="highscore-hud">
-            High Score: <span id="highscore">0</span>
-        </div>
-
-    </div>
-
-    <!-- Hidden images for assets -->
-    <div style="display:none;">
-        <img id="player-img" src="assets/player.webp" alt="Player">
-        <img id="obstacle-img" src="assets/obstacle.webp" alt="Obstacle">
-        <img id="gem-img" src="assets/gem.webp" alt="Gem">
-    </div>
-
-    <script src="game.js"></script>
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js')
-                    .then((reg) => console.log('Service Worker Registered', reg))
-                    .catch((err) => console.log('Service Worker Failed', err));
-            });
-        }
-    </script>
-</body>
-
-</html>
+<body data-state="start">
+<canvas id="world" aria-label="A three-lane stone path through jungle temple gates"></canvas>
+<header><div class="brand"><img src="assets/temple-mark.svg" width="44" height="44" alt=""> POLYNESIAN RUNNER</div><div class="stats"><span id="live" hidden>SCORE <b id="score">0</b></span><span>BEST <b id="best">0</b></span></div></header>
+<main id="menu"><div class="course"><i></i> COURSE 01 <span>/</span> TEMPLE PASSAGE</div>
+<h1 id="title">Polynesian<br><em>Runner</em></h1>
+<p id="description">Follow the gold through the jungle ruins. Dodge the barriers and slide beneath the gates.</p>
+<button id="start">Enter the temple <span aria-hidden="true">→</span></button>
+</main>
+<footer><span class="location"><i></i> TEMPLE PASSAGE</span><div class="keys"><kbd>← →</kbd> Move <kbd>SPACE</kbd> Jump <kbd>↓</kbd> Duck</div><div class="touch">Swipe ← → to move · ↑ jump · ↓ slide</div></footer>
+<script src="scene.js" defer></script><script src="game.js" type="module"></script>
+</body></html>
