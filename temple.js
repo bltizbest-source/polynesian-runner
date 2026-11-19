@@ -152,6 +152,7 @@ export function createTempleScene(canvas) {
         scene.add(g);return g;
     }
     const free={barrier:[],gate:[],gem:[]};
+    const shotPosition=new T.Vector3(),shotTarget=new T.Vector3(),shotDirection=new T.Vector3();
     let prevW=0,prevH=0;
     return function draw(state,distance,p,entities,t,menu,chase){
         const w=canvas.clientWidth,h=canvas.clientHeight;
@@ -171,10 +172,22 @@ export function createTempleScene(canvas) {
             2.36-.79*menu-.55*catchFocus,
             T.MathUtils.lerp(T.MathUtils.lerp(chaseDepth,3.85+narrow*.7,menu),2.05,catchFocus));
         camera.lookAt(p.x*(.16+.84*catchFocus),1.08-.47*catchFocus,-4.6+menu*3.7+5.36*catchFocus);
+        if(chase.hold>0 && state!=='start'){
+            const closeUp=T.MathUtils.smoothstep(chase.hold,0,1.12);
+            // Let the grab read in profile first, then fill the results
+            // backdrop with the face while keeping the clasp in view.
+            const portraitZoom=state==='over'?menu:0;
+            camera.position.lerp(shotPosition.set(p.x+2.85-1.84*portraitZoom,
+                1.45-.10*portraitZoom,-.46+.46*portraitZoom),closeUp);
+            shotTarget.set(p.x,.87+.15*portraitZoom,1.16);
+            camera.getWorldDirection(shotDirection);
+            shotDirection.multiplyScalar(3.5).add(camera.position).lerp(shotTarget,closeUp);
+            camera.lookAt(shotDirection);
+        }
         forest.position.z=distance%period;repeat.position.z=forest.position.z-period;
-        poseRunner(state,distance,p,t,menu,chase.stumble);
-        posePursuer(state,p,t,chase);
-        shadow.position.set(p.x,.018,.02+chase.stumble*.48);shadow.scale.set(.37,.48,1);
+        const bite=posePursuer(state,p,t,chase);
+        const runnerPosition=poseRunner(state,distance,p,t,menu,chase.stumble,bite,chase.hold);
+        shadow.position.set(runnerPosition.x,.018,.02+runnerPosition.z);shadow.scale.set(.37,.48,1);
         for(const [e,obj] of objects)if(!entities.includes(e)){obj.visible=false;free[e.kind].push(obj);objects.delete(e);}
         for(const e of entities){
             let obj=objects.get(e);

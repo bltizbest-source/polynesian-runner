@@ -195,7 +195,7 @@ function advanceCapture(dt) {
     chase.stride += closed;
     if(chase.lead === 0){
         chase.hold += dt;
-        if(chase.hold >= .75) end();
+        if(chase.hold >= 1.65) end();
     }
 }
 function frame(now) {

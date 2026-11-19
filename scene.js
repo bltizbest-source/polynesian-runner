@@ -148,6 +148,15 @@ function createScene(canvas, laneWidth) {
     athlete.src='assets/runner-poses.webp';
     const ridgeback=new Image();
     ridgeback.src='assets/ridgeback-poses.webp';
+    const capture=new Image();
+    capture.src='assets/ridgeback-grab.webp';
+    function grab(x,z,hold){
+        const frame=Math.min(15,Math.round(hold/1.65*15));
+        const [px,py]=project(x,0,z),scale=focal/z;
+        ellipse('#3e40474d',px,py,scale*.78,scale*.20);
+        ctx.drawImage(capture,frame%8*384,Math.floor(frame/8)*256,384,256,
+            px-2.1*scale,py-2.1*scale,4.2*scale,2.8*scale);
+    }
     function beast(x,z,distance){
         if(!ridgeback.naturalWidth)return;
         const [px,py]=project(x,0,z),scale=focal/z;
@@ -186,8 +195,13 @@ function createScene(canvas, laneWidth) {
             const z=e.at-distance+8;
             if(z>1.5&&z<155)items.push({z,draw:()=>e.kind==='gem'?gem(e.x,z,time):obstacle(e,z)});
         }
-        items.push({z:8-chase.stumble*.48,draw:()=>runner(player,distance,state!=='start',chase.stumble)});
-        if(state!=='start'){
+        const gripped=(state==='catching'||state==='over') && chase.hold>0 && capture.naturalWidth>0;
+        if(gripped){
+            items.push({z:7,draw:()=>grab(player.x,7,chase.hold)});
+        }else{
+            items.push({z:8-chase.stumble*.48,draw:()=>runner(player,distance,state!=='start',chase.stumble)});
+        }
+        if(state!=='start' && !gripped){
             const z=8-(.8+chase.lead+chase.stumble*.48);
             if(z>1.5)items.push({z,draw:()=>beast(chase.x,z,chase.stride)});
         }

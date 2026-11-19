@@ -67,6 +67,7 @@ export function createRunner(scene) {
         return {anchor,bend};
     }
     const hips=joint(root),spine=joint(hips),neck=joint(spine,0,.61,-.018);
+    const armorGrip=joint(spine,0,.43,.178),gripPosition=new T.Vector3();
     // Wraparound woven panels share a small local texture. The larger bands
     // stay legible from the chase camera; the fine fibre shows in the menu.
     function weave(base, reed, trim) {
@@ -181,7 +182,7 @@ export function createRunner(scene) {
     });
     let lastTime=0,airborne=false,impact=0;
     const mix=T.MathUtils.lerp;
-    return function pose(state,distance,p,t,menu,stumble=0){
+    return function pose(state,distance,p,t,menu,stumble=0,bite=null,hold=0){
         const dt=Math.min(.08,Math.max(0,t-lastTime));lastTime=t;
         const running=state==='playing',air=T.MathUtils.smoothstep(p.y,0,.3);
         if(running && !p.y && airborne)impact=1;
@@ -222,6 +223,19 @@ export function createRunner(scene) {
             const counter=Math.cos(phase*2*Math.PI)*travel;
             arm.anchor.rotation.set(-.28-.82*counter+s*.46*air-.23*c,0,s*(.12+.27*c+.13*air));
             arm.bend.rotation.x=.62+.66*travel-.25*counter+.32*air;
+            if(bite){
+                const lift=T.MathUtils.smoothstep(hold,.18,.86);
+                arm.anchor.rotation.z+=s*lift*(.51+.14*Math.sin(t*8+s));
+                leg.bend.rotation.x-=lift*(.27+.18*Math.sin(t*7+s));
+            }
         }
+        // Keep the clasp on the back of the armor between the teeth while the
+        // head lifts and pulls. Both roots are in scene coordinates.
+        if(bite){
+            armorGrip.getWorldPosition(gripPosition);
+            root.position.addScaledVector(gripPosition.subVectors(bite,gripPosition),
+                T.MathUtils.smoothstep(hold,0,.22));
+        }
+        return root.position;
     };
 }
