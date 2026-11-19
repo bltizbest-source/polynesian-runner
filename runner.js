@@ -43,7 +43,7 @@ export function createRunner(scene) {
         g.setIndex(indices);g.computeVertexNormals();return g;
     }
     // One continuous skin surface bends across each elbow or knee.
-    function limb(parent,x,y,upper,rows) {
+    function limb(parent,x,y,upper,rows,shorts=false) {
         const anchor=joint(parent,x,y);
         const g=profile(rows),weights=[],indices=[];
         for(let i=0;i<g.attributes.position.count;i++){
@@ -53,7 +53,13 @@ export function createRunner(scene) {
         }
         g.setAttribute('skinIndex',new T.Uint16BufferAttribute(indices,4));
         g.setAttribute('skinWeight',new T.Float32BufferAttribute(weights,4));
-        const surface=new T.SkinnedMesh(g,material(skin));
+        let surfaceMaterials=material(skin);
+        if(shorts){
+            const split=rows.findIndex(([height])=>height>=-.365)*28*6;
+            g.addGroup(0,split,0);g.addGroup(split,g.index.count-split,1);
+            surfaceMaterials=[material(skin),material(0x244943)];
+        }
+        const surface=new T.SkinnedMesh(g,surfaceMaterials);
         const top=new T.Bone(),bend=new T.Bone();
         bend.position.y=-upper;top.add(bend);surface.add(top);
         surface.bind(new T.Skeleton([top,bend]));
@@ -61,59 +67,67 @@ export function createRunner(scene) {
         return {anchor,bend};
     }
     const hips=joint(root),spine=joint(hips),neck=joint(spine,0,.61,-.018);
-    // Sample the ribs and taper densely enough to sculpt the scapulae and
-    // spinal groove without a seam between the muscle groups.
-    const ribcage=[
-        [-.08,.154,.123],[.025,.183,.13],[.13,.151,.113],[.21,.164,.116],
-        [.30,.202,.13],[.38,.234,.145],[.46,.249,.14],[.50,.238,.128],
-        [.53,.193,.109],[.56,.128,.091],[.59,.076,.071],[.65,.067,.065]
-    ];
-    const rings=[];
-    for(let i=1;i<ribcage.length;i++) {
-        for(let step=0;step<4;step++)
-            rings.push(ribcage[i-1].map((v,k)=>T.MathUtils.lerp(v,ribcage[i][k],step/4)));
-    }
-    rings.push(ribcage.at(-1));
-    const chest=profile(rings),verts=chest.attributes.position;
-    function mound(x,y,width,height) {return Math.exp(-(x*x/(width*width)+y*y/(height*height)));}
-    for(let i=0;i<verts.count;i++){
-        const x=Math.abs(verts.getX(i)),y=verts.getY(i),z=verts.getZ(i);
-        const facing=Math.min(1,Math.abs(z)/.12);
-        if(z>0){
-            const traps=.039*mound(x-.057-(.49-y)*.3,y-.46,.052,.105);
-            const shoulderBlade=.043*mound(x-.119,y-.386,.066,.071);
-            const lat=.047*mound(x-(.099+.50*(y-.29)),y-.29,.056,.103);
-            const lowerBack=.021*mound(x-.048,y-.15,.023,.11);
-            const groove=.015*mound(x,y-.33,.018,.185);
-            verts.setZ(i,z+facing*(traps+shoulderBlade+lat+lowerBack-groove));
-        }else{
-            const pec=.046*mound(x-.104,y-.414,.086,.064);
-            const abs=.016*mound(x-.043,y-.22,.033,.10);
-            verts.setZ(i,z-facing*(pec+abs));
+    // Wraparound woven panels share a small local texture. The larger bands
+    // stay legible from the chase camera; the fine fibre shows in the menu.
+    function weave(base, reed, trim) {
+        const tile=document.createElement('canvas');
+        tile.width=512;tile.height=256;
+        const g=tile.getContext('2d');
+        g.fillStyle=base;g.fillRect(0,0,512,256);
+        g.strokeStyle=reed;g.lineWidth=2;g.globalAlpha=.55;
+        for(let y=0;y<256;y+=8){
+            g.beginPath();
+            for(let x=-8+(y%16);x<512;x+=16){
+                g.moveTo(x,y+6);g.lineTo(x+6,y);g.lineTo(x+12,y+6);
+            }
+            g.stroke();
         }
-    }
-    chest.computeVertexNormals();mesh(spine,chest,skin);
-    // Cloth follows the waist, with a contrasting woven border on the hem.
-    const wrap=mesh(hips,profile([[-.18,.204,.164],[-.16,.21,.163],[.015,.184,.15],[.089,.162,.12]]),cloth);
-    mesh(wrap,profile([[-.165,.212,.165],[-.147,.211,.166]]),band);
-    mesh(hips,profile([[.043,.176,.14],[.073,.169,.134],[.096,.161,.125]]),0xc34f32);
-    // Fit the sash to the sculpted back at each height, including its taper.
-    const ribbon=[],faces=[];
-    for(let r=0;r<rings.length;r++){
-        const [y,rx]=rings[r];
-        if(y<.07 || y>.525)continue;
-        const row=ribbon.length/6;
-        for(const edge of [-1,1]){
-            const x=T.MathUtils.clamp(-.137+(y-.07)*.71+edge*.025,-rx*.98,rx*.98);
-            const u=Math.acos(x/rx)*28/(2*Math.PI),j=Math.floor(u);
-            const z=T.MathUtils.lerp(verts.getZ(r*28+j),verts.getZ(r*28+j+1),u-j);
-            ribbon.push(x,y,z+.0045);
+        g.globalAlpha=1;
+        for(const y of [8,207]){
+            g.fillStyle=trim;g.fillRect(0,y,512,3);g.fillRect(0,y+31,512,3);
+            g.fillStyle=reed;
+            for(let x=-16;x<512;x+=32){
+                g.beginPath();g.moveTo(x,y+27);g.lineTo(x+14,y+6);g.lineTo(x+28,y+27);g.fill();
+                g.fillStyle=base;g.fillRect(x+13,y+17,3,8);g.fillStyle=reed;
+            }
         }
-        if(row>0){const n=row*2;faces.push(n-2,n-1,n,n,n-1,n+1);}
+        const map=new T.CanvasTexture(tile);map.colorSpace=T.SRGBColorSpace;
+        return new T.MeshStandardMaterial({map,roughness:.91,side:T.DoubleSide});
     }
-    const ribbonMesh=new T.BufferGeometry();
-    ribbonMesh.setAttribute('position',new T.Float32BufferAttribute(ribbon,3));
-    ribbonMesh.setIndex(faces);ribbonMesh.computeVertexNormals();mesh(spine,ribbonMesh,0xb75533);
+    const coir=weave('#724728','#b7884c','#eed3a1');
+    const mantle=weave('#174d48','#498578','#e9c783');
+    const sash=weave('#923d2d','#d67e47','#efd7a2');
+    function garment(parent,rows,mat) {
+        const geo=profile(rows);
+        // Unroll the seam for texturing, retaining the smooth profile normals.
+        const flat=geo.toNonIndexed();geo.dispose();
+        const uv=flat.attributes.uv;
+        for(let i=0;i<uv.count;i+=3){
+            if(Math.max(uv.getX(i),uv.getX(i+1),uv.getX(i+2))<.95)continue;
+            for(let j=i;j<i+3;j++)if(uv.getX(j)===0)uv.setX(j,1);
+        }
+        const obj=new T.Mesh(flat,mat);
+        obj.castShadow=true;parent.add(obj);return obj;
+    }
+    // High-neck underlayer closes the collar and the arm openings as the
+    // shoulder girdle rotates independently of the hips.
+    mesh(spine,profile([[-.085,.18,.15],[.15,.16,.13],[.40,.236,.15],
+        [.49,.253,.145],[.545,.16,.106],[.592,.081,.075],[.608,.070,.068]]),cloth);
+    oval(spine,skin,0,.62,-.012,.067,.088,.067);
+    garment(spine,[[-.015,.189,.168],[.09,.181,.149],[.20,.181,.143],
+        [.32,.216,.169],[.43,.256,.173],[.485,.263,.157],[.52,.222,.14],
+        [.557,.15,.112],[.576,.09,.087]],coir);
+    // Woven shoulder yoke, with a shell clasp at front and back.
+    garment(spine,[[.378,.251,.183],[.415,.263,.185],[.47,.271,.177],
+        [.508,.244,.158],[.55,.17,.124],[.582,.09,.09]],mantle);
+    for(const side of [-1,1]){
+        oval(spine,0x523d28,0,.407,side*.183,.043,.050,.014);
+        oval(spine,0xe8d4a6,0,.410,side*.193,.032,.042,.010);
+        oval(spine,0xab835c,0,.410,side*.202,.004,.024,.003);
+    }
+    const wrap=garment(hips,[[-.244,.244,.206],[-.20,.24,.201],[-.10,.221,.182],
+        [.016,.198,.173],[.08,.181,.153]],mantle);
+    garment(hips,[[-.015,.201,.179],[.038,.198,.173],[.088,.19,.159]],sash);
 
     mesh(neck,profile([[-.005,.047,.052,-.03],[.025,.08,.082,-.025],
         [.08,.097,.104,-.013],[.146,.106,.112],[.209,.098,.105],[.252,.069,.079],[.267,.01,.012]]),skin);
@@ -142,7 +156,11 @@ export function createRunner(scene) {
             [-.57,.079,.088,.025],[-.51,.072,.075,.021],[-.47,.058,.061,.006],
             [-.425,.066,.068,-.012],[-.365,.076,.086,-.014],[-.30,.087,.098,-.012],
             [-.21,.104,.119],[-.13,.114,.125],[-.045,.105,.12],[.045,.073,.085]
-        ]);
+        ],true);
+        garment(leg.anchor,[[-.313,.096,.109,-.012],[-.27,.101,.118,-.008],
+            [-.185,.117,.13],[-.105,.122,.133],[-.04,.111,.127]],mantle);
+        garment(leg.bend,[[-.352,.052,.06],[-.265,.066,.082,.014],
+            [-.185,.085,.098,.021],[-.118,.082,.092,.019],[-.089,.075,.084,.018]],coir);
         const foot=joint(leg.bend,0,-calf);
         oval(foot,skin,0,-.007,-.054,.057,.049,.113);
         oval(foot,0x594632,0,-.041,-.058,.061,.022,.128);
@@ -155,12 +173,15 @@ export function createRunner(scene) {
         ]);
         oval(arm.bend,skin,0,-.281,-.007,.04,.06,.039);
         oval(arm.bend,skin,-s*.03,-.267,-.032,.017,.034,.019);
-        oval(arm.bend,band,0,-.222,0,.036,.018,.039);
+        garment(arm.bend,[[-.235,.042,.045],[-.195,.049,.053],
+            [-.111,.059,.068],[-.068,.065,.069]],coir);
+        garment(arm.anchor,[[-.118,.082,.10],[-.074,.102,.11],
+            [-.026,.108,.108],[.021,.094,.093],[.053,.066,.065],[.067,.015,.018]],s<0?coir:mantle);
         return {s,leg,foot,arm};
     });
     let lastTime=0,airborne=false,impact=0;
     const mix=T.MathUtils.lerp;
-    return function pose(state,distance,p,t,menu){
+    return function pose(state,distance,p,t,menu,stumble=0){
         const dt=Math.min(.08,Math.max(0,t-lastTime));lastTime=t;
         const running=state==='playing',air=T.MathUtils.smoothstep(p.y,0,.3);
         if(running && !p.y && airborne)impact=1;
@@ -169,8 +190,8 @@ export function createRunner(scene) {
         const cycle=running?distance/4.25:0,angle=cycle*2*Math.PI;
         const c=p.crouch, travel=running?(1-c)*(1-air):0;
         const lean=p.lane*1.55-p.x, breath=Math.sin(t*2.2)*.008;
-        root.position.set(p.x,p.y,0);root.rotation.z=-lean*.105;
-        root.rotation.y=menu*2.48-lean*.15;
+        root.position.set(p.x,p.y,stumble*.48);root.rotation.z=-lean*.105-stumble*.61;
+        root.rotation.y=menu*2.48*(1-stumble)-lean*.15+stumble*.48;
         const hipY=mix(.855+.043*Math.cos(angle*2)*travel-.086*impact,.335,c);
         hips.position.set(.021*Math.sin(angle)*travel,hipY,0);
         hips.rotation.y=.1*Math.sin(angle)*travel;

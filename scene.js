@@ -146,8 +146,18 @@ function createScene(canvas, laneWidth) {
     }
     const athlete=new Image();
     athlete.src='assets/runner-poses.webp';
-    function runner(player,distance,active) {
-        const scale=focal/8, [x,ground]=project(player.x,0,8);
+    const ridgeback=new Image();
+    ridgeback.src='assets/ridgeback-poses.webp';
+    function beast(x,z,distance){
+        if(!ridgeback.naturalWidth)return;
+        const [px,py]=project(x,0,z),scale=focal/z;
+        const phase=Math.floor(distance*2.28/(Math.PI*2)*8)%8;
+        ellipse('#3e40474d',px,py,scale*.52,scale*.18);
+        ctx.drawImage(ridgeback,phase*240,0,240,224,px-scale*1.34,py-scale*1.70,
+            scale*2.68,scale*2.50);
+    }
+    function runner(player,distance,active,stumble) {
+        const z=8-stumble*.48, scale=focal/z, [x,ground]=project(player.x,0,z);
         ellipse('#3e40474d',x,ground,scale*.37,scale*.10);
         if(!athlete.naturalWidth)return;
         const phase=Math.floor(distance/4.25*8)%8;
@@ -157,14 +167,14 @@ function createScene(canvas, laneWidth) {
         else if(player.y>.08){row=2;frame=Math.min(6,phase);}
         ctx.save();
         ctx.translate(x,ground-player.y*scale);
-        ctx.rotate((player.lane*laneWidth-player.x)*.1);
+        ctx.rotate((player.lane*laneWidth-player.x)*.1+stumble*.61);
         ctx.drawImage(athlete,frame*160,row*224,160,224,-.75*scale,-1.92*scale,1.5*scale,2.1*scale);
         ctx.restore();
     }
-    return function draw(state, distance, player, entities, time, menuBlend) {
+    return function draw(state, distance, player, entities, time, menuBlend, chase) {
         const portrait=w<h*.84;
         center=w*(.5+menuBlend*(portrait?.12:.19));
-        horizon=h*((portrait?.45:.43)+menuBlend*(portrait?.10:0));
+        horizon=h*((portrait?.45:.43)-menuBlend*(portrait?.22:0));
         focal=Math.min(h*(portrait?.98:1.18),w*1.65);
         landscape(time);road(distance);
         const items=[];
@@ -176,7 +186,11 @@ function createScene(canvas, laneWidth) {
             const z=e.at-distance+8;
             if(z>1.5&&z<155)items.push({z,draw:()=>e.kind==='gem'?gem(e.x,z,time):obstacle(e,z)});
         }
-        items.push({z:8,draw:()=>runner(player,distance,state==='playing')});
+        items.push({z:8-chase.stumble*.48,draw:()=>runner(player,distance,state!=='start',chase.stumble)});
+        if(state!=='start'){
+            const z=8-(.8+chase.lead+chase.stumble*.48);
+            if(z>1.5)items.push({z,draw:()=>beast(chase.x,z,chase.stride)});
+        }
         items.sort((a,b)=>b.z-a.z).forEach(item=>item.draw());
         const shade=ctx.createLinearGradient(0,0,portrait?0:w,portrait?h:0);
         shade.addColorStop(0,`rgba(14,33,45,${.12+.74*menuBlend})`);

@@ -18,6 +18,8 @@ let state = 'start', distance = 0, score = 0, obstacleCount = 0;
 let entities = [], nextObstacle = 0, time = 0, menuBlend = 1;
 const laneWidth = 1.55;
 const player = { x: 0, lane: 0, y: 0, velocity: 0, jumps: 0, duck: false, crouch: 0 };
+// Lead measures clear ground between the beast's muzzle and the runner.
+const chase = {lead:1, x:1.06, stride:0, stumble:0, hold:0, closingSpeed:0};
 const gestures = new Map();
 let slideTime = 0;
 let duckKey = false;
@@ -42,7 +44,7 @@ function clearInput() {
     player.duck = false;
 }
 function start() {
-    if (state === 'playing') return;
+    if (state !== 'start' && state !== 'over') return;
     state = 'playing';
     document.body.dataset.state = state;
     distance = score = obstacleCount = 0;
@@ -51,8 +53,11 @@ function start() {
     fillCourse();
     clearInput();
     Object.assign(player, {x:0, lane:0, y:0, velocity:0, jumps:0, crouch:0});
+    Object.assign(chase, {lead:1, x:1.06, stride:0, stumble:0, hold:0, closingSpeed:0});
     el('menu').hidden = true;
     el('live').hidden = false;
+    el('lead-hud').hidden = false;
+    el('lead').textContent = '1 m';
     el('score').textContent = 0;
 }
 function end() {
@@ -65,9 +70,11 @@ function end() {
     }
     el('best').textContent = best;
     el('live').hidden = true;
-    el('title').innerHTML = 'Run<br><em>complete</em>';
+    el('lead-hud').hidden = true;
+    el('title').textContent = 'Caught!';
     el('description').textContent = 'Score ' + score + '  ·  Distance ' + Math.floor(distance) + ' m';
-    el('start').firstChild.textContent = 'Run again ';
+    el('start-label').textContent = 'Run again';
+    el('home').hidden = false;
     el('menu').hidden = false;
     el('start').focus({preventScroll:true});
 }
@@ -78,10 +85,27 @@ function jump() {
     }
 }
 el('start').addEventListener('click', start);
+el('help').addEventListener('click', () => el('guide').showModal());
+el('home').addEventListener('click', () => {
+    state = 'start';
+    document.body.dataset.state = state;
+    distance = obstacleCount = 0;
+    entities = [];
+    nextObstacle = 24;
+    fillCourse();
+    Object.assign(player, {x:0, lane:0, y:0, crouch:0});
+    chase.stumble = 0;
+    el('title').innerHTML = 'Temple<br><em>Passage</em>';
+    el('description').textContent = 'Chase the gold through ancient gates on an endless jungle run.';
+    el('start-label').textContent = 'Start run';
+    el('home').hidden = true;
+    el('start').focus();
+});
 function changeLane(direction) {
     player.lane = Math.max(-1, Math.min(1, player.lane + direction));
 }
 document.addEventListener('keydown', e => {
+    if (el('guide').open || (e.code === 'Space' && e.target.closest('button'))) return;
     if (!['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) return;
     e.preventDefault();
     if (e.repeat) return;
@@ -95,7 +119,7 @@ document.addEventListener('keydown', e => {
 document.addEventListener('keyup', e => { if(e.code === 'ArrowDown') duckKey = false; });
 document.addEventListener('pointerdown', e => {
     if (e.target.closest('button') || e.button !== 0) return;
-    if (state !== 'playing') { if(e.pointerType === 'touch') start(); return; }
+    if (state !== 'playing') return;
     gestures.set(e.pointerId, {x:e.clientX, y:e.clientY, start:performance.now(), used:false});
 });
 function readSwipe(e) {
@@ -121,7 +145,13 @@ window.addEventListener('blur', clearInput);
 document.addEventListener('visibilitychange', () => { clearInput(); lastFrame = undefined; });
 
 function advance(dt) {
-    distance += dt * (8 + Math.min(distance / 160, 6));
+    const speed = 8 + Math.min(distance / 160, 6);
+    distance += dt * speed;
+    // The beast initially loses ground, then matches pace at a trailing distance.
+    const gain = (.55 + speed - 8) * Math.exp(-chase.lead / 8) * dt;
+    chase.lead += gain;
+    chase.stride += speed*dt - gain;
+    chase.x += (1.06 + player.x*.34 - chase.x)*(1-Math.exp(-3.1*dt));
     player.y = Math.max(0, player.y + player.velocity*dt - 8*dt*dt);
     player.velocity = player.y ? player.velocity - 16*dt : 0;
     if (!player.y) player.jumps = 0;
@@ -141,13 +171,32 @@ function advance(dt) {
             if (e.kind === 'gem') {
                 if (player.y < 1.45 && !player.duck) {score += 10; e.done = true;}
             } else if (e.kind === 'gate' ? (player.crouch < .8 && player.y < 1.85) || lateralGap > .52 : player.y < .62) {
-                end(); return;
+                state = 'catching';
+                document.body.dataset.state = state;
+                clearInput();
+                player.velocity = Math.min(0,player.velocity);
+                chase.closingSpeed = Math.min(speed + 1.5, chase.lead / .85);
+                return;
             }
         }
         if (gap < -.36 && e.kind !== 'gem') { score++; e.done = true; }
     }
     entities = entities.filter(e => e.at > distance-7 && !(e.done && e.kind === 'gem'));
     el('score').textContent = score;
+}
+function advanceCapture(dt) {
+    chase.stumble = Math.min(1,chase.stumble + 2.8*dt);
+    player.velocity -= 16*dt;
+    player.y = Math.max(0,player.y + player.velocity*dt);
+    player.crouch += (1-player.crouch)*(1-Math.exp(-9*dt));
+    const closed = Math.min(chase.lead,chase.closingSpeed*dt);
+    chase.x += (player.x+.08-chase.x)*(closed/Math.max(.000001,chase.lead));
+    chase.lead -= closed;
+    chase.stride += closed;
+    if(chase.lead === 0){
+        chase.hold += dt;
+        if(chase.hold >= .75) end();
+    }
 }
 function frame(now) {
     const dt = Math.min((now-(lastFrame ?? now))/1000,.075);
@@ -156,9 +205,14 @@ function frame(now) {
     if (state === 'playing') {
         const steps = Math.max(1,Math.ceil(dt*90));
         for(let i=0;i<steps && state==='playing';i++) advance(dt/steps);
+    } else if(state==='catching') advanceCapture(dt);
+    if(state==='playing'||state==='catching'){
+        const metres = chase.lead > 0 ? Math.max(1,Math.round(chase.lead)) : 0;
+        el('lead').textContent = metres+' m';
     }
-    menuBlend += ((state==='playing'?0:1)-menuBlend)*(1-Math.exp(-5*dt));
-    draw(state, distance, player, entities, time, menuBlend);
+    const menuVisible=state==='start'||state==='over';
+    menuBlend += ((menuVisible?1:0)-menuBlend)*(1-Math.exp(-5*dt));
+    draw(state, distance, player, entities, time, menuBlend, chase);
     requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

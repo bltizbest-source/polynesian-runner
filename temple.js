@@ -1,5 +1,6 @@
 import * as T from './vendor/three.module.min.js';
 import {createRunner} from './runner.js';
+import {createPursuer} from './pursuer.js';
 
 // Static scenery is batched by shape. One repeating section carries the whole forest.
 export function createTempleScene(canvas) {
@@ -134,6 +135,7 @@ export function createTempleScene(canvas) {
     const water=piece(scene,box,0x358888,0,-1.03,-56,300,.25,260);water.castShadow=false;
     for(let i=0;i<12;i++)piece(scene,rock,0x688575,(i-5)*17,-.8,-85-random()*20,27,12+random()*21,26);
     const poseRunner=createRunner(scene);
+    const posePursuer=createPursuer(scene);
     const shadow=new T.Mesh(new T.CircleGeometry(1,20),new T.MeshBasicMaterial({color:0x29382d,transparent:true,opacity:.38,depthWrite:false}));
     shadow.rotation.x=-Math.PI/2;scene.add(shadow);
     const objects=new Map();
@@ -151,7 +153,7 @@ export function createTempleScene(canvas) {
     }
     const free={barrier:[],gate:[],gem:[]};
     let prevW=0,prevH=0;
-    return function draw(state,distance,p,entities,t,menu){
+    return function draw(state,distance,p,entities,t,menu,chase){
         const w=canvas.clientWidth,h=canvas.clientHeight;
         if(!w || !h)return;
         if(w!==prevW||h!==prevH){
@@ -162,13 +164,17 @@ export function createTempleScene(canvas) {
         const sway=Math.sin(t*.19)*.34;
         camera.fov=57+11*narrow;
         const verticalFov=T.MathUtils.degToRad(camera.fov);
-        const chaseDepth=Math.max(4.46,2.38/(Math.tan(verticalFov/2)*aspect));
-        camera.setViewOffset(w,h,-w*menu*(.245-.20*narrow),-h*menu*(.025+.115*narrow),w,h);
-        camera.position.set(p.x*.19+(2.85+sway)*menu,2.36+menu, chaseDepth+menu*3.6);
-        camera.lookAt(p.x*.16,1.08,-4.6-menu*1.5);
+        const chaseDepth=Math.max(5.35,2.65/(Math.tan(verticalFov/2)*aspect));
+        camera.setViewOffset(w,h,-w*menu*(.22-.18*narrow),h*menu*narrow*.24,w,h);
+        const catchFocus=chase.stumble*(1-menu);
+        camera.position.set(T.MathUtils.lerp(p.x*.19,p.x+3.95,catchFocus)+(-1.25+sway*.45)*menu,
+            2.36-.79*menu-.55*catchFocus,
+            T.MathUtils.lerp(T.MathUtils.lerp(chaseDepth,3.85+narrow*.7,menu),2.05,catchFocus));
+        camera.lookAt(p.x*(.16+.84*catchFocus),1.08-.47*catchFocus,-4.6+menu*3.7+5.36*catchFocus);
         forest.position.z=distance%period;repeat.position.z=forest.position.z-period;
-        poseRunner(state,distance,p,t,menu);
-        shadow.position.set(p.x,.018,.02);shadow.scale.set(.37,.48,1);
+        poseRunner(state,distance,p,t,menu,chase.stumble);
+        posePursuer(state,p,t,chase);
+        shadow.position.set(p.x,.018,.02+chase.stumble*.48);shadow.scale.set(.37,.48,1);
         for(const [e,obj] of objects)if(!entities.includes(e)){obj.visible=false;free[e.kind].push(obj);objects.delete(e);}
         for(const e of entities){
             let obj=objects.get(e);
