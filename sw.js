@@ -1,7 +1,7 @@
-const CACHE = 'polynesian-runner-v6';
-const urls = ['./','./index.html','./style.css','./scene.js','./temple.js','./vendor/three.module.min.js',
+const CACHE = 'polynesian-runner-v7';
+const urls = ['./','./index.html','./style.css','./scene.js','./temple.js','./runner.js','./vendor/three.module.min.js',
     './game.js','./manifest.json','./favicon.png','./assets/temple-mark.svg','./assets/apple-touch-icon.png',
-    './assets/icon-192.png','./assets/icon-512.png'];
+    './assets/icon-192.png','./assets/icon-512.png','./assets/runner-poses.webp'];
 self.addEventListener('install', event => {
     event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(urls)).then(() => self.skipWaiting()));
 });

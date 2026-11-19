@@ -1,4 +1,5 @@
 import * as T from './vendor/three.module.min.js';
+import {createRunner} from './runner.js';
 
 // Static scenery is batched by shape. One repeating section carries the whole forest.
 export function createTempleScene(canvas) {
@@ -132,29 +133,7 @@ export function createTempleScene(canvas) {
     }
     const water=piece(scene,box,0x358888,0,-1.03,-56,300,.25,260);water.castShadow=false;
     for(let i=0;i<12;i++)piece(scene,rock,0x688575,(i-5)*17,-.8,-85-random()*20,27,12+random()*21,26);
-    const runner=new T.Group();scene.add(runner);
-    function joint(parent,x,y,z){const o=new T.Group();parent.add(o);o.position.set(x,y,z);return o;}
-    const hips=joint(runner,0,.83,0),torso=joint(hips,0,.01,0);
-    const skin=0xa46040,hair=0x332c2b,cloth=0x226559,gold=0xf3bc66;
-    piece(torso,rock,skin,0,.29,0,.68,.82,.44);
-    piece(hips,pole,cloth,0,-.035,0,.66,.36,.54);
-    piece(hips,pole,gold,0,.10,0,.57,.09,.49);
-    const sash=piece(torso,box,0xe68f4c,0,.31,.201,.115,.67,.055);sash.rotation.z=.57;
-    piece(torso,rock,skin,0,.76,0,.43,.5,.43);
-    piece(torso,rock,hair,0,.86,.02,.48,.36,.47);
-    piece(torso,pole,0xca5939,0,.86,0,.48,.075,.46);
-    piece(torso,rock,hair,.015,1.045,.09,.29,.27,.29);
-    const limbs=[-1,1].map(s=>{
-        const thigh=joint(hips,s*.146,-.09,0),shin=joint(thigh,0,-.34,0);
-        piece(thigh,pole,skin,0,-.16,0,.2,.38,.20);
-        piece(shin,pole,skin,0,-.155,0,.16,.34,.15);
-        piece(shin,rock,0x50392c,0,-.33,-.05,.2,.18,.33);
-        const arm=joint(torso,s*.27,.48,0),forearm=joint(arm,0,-.26,0);
-        piece(arm,pole,skin,0,-.13,0,.17,.31,.17);
-        piece(forearm,pole,skin,0,-.13,0,.15,.29,.15);
-        piece(forearm,pole,gold,0,-.2,0,.16,.07,.16);
-        return {s,thigh,shin,arm,forearm};
-    });
+    const poseRunner=createRunner(scene);
     const shadow=new T.Mesh(new T.CircleGeometry(1,20),new T.MeshBasicMaterial({color:0x29382d,transparent:true,opacity:.38,depthWrite:false}));
     shadow.rotation.x=-Math.PI/2;scene.add(shadow);
     const objects=new Map();
@@ -166,7 +145,7 @@ export function createTempleScene(canvas) {
             const gate=kind==='gate',y=gate?1.46:.335;
             if(gate)for(const s of [-1,1])piece(g,box,0x60442f,s*.71,.92,0,.16,1.84,.34);
             piece(g,box,0x986348,0,y,0,1.56,.67,.45);
-            for(const x of [-.46,0,.46])piece(g,box,gold,x,y,.237,.24,.24,.045).rotation.z=Math.PI/4;
+            for(const x of [-.46,0,.46])piece(g,box,0xf3bc66,x,y,.237,.24,.24,.045).rotation.z=Math.PI/4;
         }
         scene.add(g);return g;
     }
@@ -174,25 +153,21 @@ export function createTempleScene(canvas) {
     let prevW=0,prevH=0;
     return function draw(state,distance,p,entities,t,menu){
         const w=canvas.clientWidth,h=canvas.clientHeight;
-        if(w!==prevW||h!==prevH){renderer.setSize(w,h,false);prevW=w;prevH=h;}
-        const portrait=w/h<.83, sway=Math.sin(t*.19)*.34;
-        camera.fov=portrait?68:57;
-        camera.setViewOffset(w,h,-w*menu*(portrait?.045:.245),-h*menu*(portrait?.14:.025),w,h);
-        camera.position.set(p.x*.19+(2.85+sway)*menu,2.36+menu*1.0,4.46+menu*3.6+(portrait?1.15:0));
+        if(!w || !h)return;
+        if(w!==prevW||h!==prevH){
+            renderer.setPixelRatio(Math.min(devicePixelRatio,1.75,Math.sqrt(3200000/(w*h))));
+            renderer.setSize(w,h,false);prevW=w;prevH=h;
+        }
+        const aspect=w/h, narrow=1-T.MathUtils.smoothstep(aspect,.65,1.12);
+        const sway=Math.sin(t*.19)*.34;
+        camera.fov=57+11*narrow;
+        const verticalFov=T.MathUtils.degToRad(camera.fov);
+        const chaseDepth=Math.max(4.46,2.38/(Math.tan(verticalFov/2)*aspect));
+        camera.setViewOffset(w,h,-w*menu*(.245-.20*narrow),-h*menu*(.025+.115*narrow),w,h);
+        camera.position.set(p.x*.19+(2.85+sway)*menu,2.36+menu, chaseDepth+menu*3.6);
         camera.lookAt(p.x*.16,1.08,-4.6-menu*1.5);
         forest.position.z=distance%period;repeat.position.z=forest.position.z-period;
-        runner.position.set(p.x,p.y,0);runner.rotation.z=-(p.lane*1.55-p.x)*.12;
-        const stride=state==='playing'?Math.sin(t*11):Math.sin(t*1.8)*.08;
-        const c=p.crouch;
-        hips.position.y=.83-.44*c+.034*Math.abs(stride)*(1-c);
-        torso.rotation.x=-1.18*c-.11;
-        torso.rotation.y=stride*.14*(1-c);
-        for(const {s,thigh,shin,arm,forearm} of limbs){
-            thigh.rotation.x=s*stride*.68*(1-c)+1.05*c+p.y*.18;
-            shin.rotation.x=-.18-Math.max(0,s*stride)*.81*(1-c)-1.95*c;
-            arm.rotation.x=-s*stride*.65*(1-c)-.46*c;
-            arm.rotation.z=s*(.14+.5*c);forearm.rotation.x=.88-.49*c;
-        }
+        poseRunner(state,distance,p,t,menu);
         shadow.position.set(p.x,.018,.02);shadow.scale.set(.37,.48,1);
         for(const [e,obj] of objects)if(!entities.includes(e)){obj.visible=false;free[e.kind].push(obj);objects.delete(e);}
         for(const e of entities){

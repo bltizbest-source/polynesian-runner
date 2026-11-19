@@ -144,51 +144,21 @@ function createScene(canvas, laneWidth) {
             face('#f3c183',[x-.19,y,front],[x,y+.17,front],[x+.19,y,front],[x,y-.17,front]);
         }
     }
-    function runner(player,t,active) {
-        const z=8,s=focal/z;
-        const [x,ground]=project(player.x,0,z);
-        ellipse('#3e40474d',x,ground,s*.43,s*.11);
+    const athlete=new Image();
+    athlete.src='assets/runner-poses.webp';
+    function runner(player,distance,active) {
+        const scale=focal/8, [x,ground]=project(player.x,0,8);
+        ellipse('#3e40474d',x,ground,scale*.37,scale*.10);
+        if(!athlete.naturalWidth)return;
+        const phase=Math.floor(distance/4.25*8)%8;
+        let frame=phase,row=0;
+        if(!active){row=2;frame=7;}
+        else if(player.crouch>.08){row=1;frame=Math.round(player.crouch*7);}
+        else if(player.y>.08){row=2;frame=Math.min(6,phase);}
         ctx.save();
-        ctx.translate(x,ground-player.y*s);
-        const stride=active?Math.sin(t*12):.18;
-        ctx.scale(s,s);
-        ctx.rotate((player.lane*laneWidth-player.x)*.105);
-        const crouch=player.crouch;
-        // Back view: articulated limbs, wrap skirt, sash and tied hair.
-        function limb(color,a,b,width){
-            ctx.strokeStyle=color;ctx.lineWidth=width;ctx.lineCap='round';ctx.beginPath();
-            ctx.moveTo(...a);ctx.lineTo(...b);ctx.stroke();
-        }
-        for(const side of [-1,1]){
-            const lift=(player.y>.05?.21:Math.max(0,stride*side)*.24)*(1-crouch);
-            const hip=[side*.14,-.66+.44*crouch];
-            const knee=[side*(.17+.21*crouch),-.37-lift-.02*crouch];
-            const ankle=[side*(.18+.07*crouch),-.12-lift];
-            limb('#ab704c',hip,knee,.18);
-            limb('#875137',knee,ankle,.15);
-            limb('#513733',ankle,[ankle[0]+side*.09,-.06-lift],.14);
-        }
-        ctx.translate(0,.44*crouch-.025*Math.abs(stride)*(1-crouch));
-        const shoulder=-1.41+.36*crouch, twist=.13*crouch;
-        polygon('#a86242',[[-.29+twist,shoulder],[.27+twist,shoulder],[.19,-.79],[-.18,-.79]]);
-        polygon('#c28150',[[-.29+twist,shoulder],[-.09+twist,shoulder+.02],[-.15,-.85],[-.2,-.83]]);
-        for(const side of [-1,1]){
-            const bend=stride*side*.14*(1-crouch);
-            const elbow=[side*(.36+.12*crouch),-1.03+bend+.29*crouch];
-            limb('#985c3d',[side*.28+twist,shoulder+.09],elbow,.16);
-            limb('#bb7b4b',elbow,[side*(.32+.21*crouch),-.88+bend+.30*crouch],.14);
-            limb('#ecd39a',elbow,[elbow[0],elbow[1]+.035],.146);
-        }
-        polygon('#295955',[[-.20,-.92],[.2,-.92],[.31,-.52],[.09,-.56],[-.03,-.5],[-.29,-.55]]);
-        polygon('#e2bc78',[[-.22,-.9],[.21,-.9],[.23,-.82],[-.21,-.8]]);
-        polygon('#d99254',[[-.25+twist,shoulder+.02],[-.12+twist,shoulder],[.22,-.94],[.17,-.85]]);
-        ctx.translate(twist,.53*crouch);
-        ctx.rotate(.07*crouch);
-        ellipse('#905637',0,-1.57,.204,.24);
-        ellipse('#312f32',0,-1.64,.216,.206);
-        ellipse('#403536',.035,-1.84,.131,.117);
-        polygon('#de714c',[[-.214,-1.63],[.216,-1.63],[.205,-1.56],[-.21,-1.55]]);
-        polygon('#c15a43',[[-.16,-1.59],[-.36,-1.43+stride*.05],[-.24,-1.44],[-.31,-1.32],[-.12,-1.53]]);
+        ctx.translate(x,ground-player.y*scale);
+        ctx.rotate((player.lane*laneWidth-player.x)*.1);
+        ctx.drawImage(athlete,frame*160,row*224,160,224,-.75*scale,-1.92*scale,1.5*scale,2.1*scale);
         ctx.restore();
     }
     return function draw(state, distance, player, entities, time, menuBlend) {
@@ -206,7 +176,7 @@ function createScene(canvas, laneWidth) {
             const z=e.at-distance+8;
             if(z>1.5&&z<155)items.push({z,draw:()=>e.kind==='gem'?gem(e.x,z,time):obstacle(e,z)});
         }
-        items.push({z:8,draw:()=>runner(player,time,state==='playing')});
+        items.push({z:8,draw:()=>runner(player,distance,state==='playing')});
         items.sort((a,b)=>b.z-a.z).forEach(item=>item.draw());
         const shade=ctx.createLinearGradient(0,0,portrait?0:w,portrait?h:0);
         shade.addColorStop(0,`rgba(14,33,45,${.12+.74*menuBlend})`);
