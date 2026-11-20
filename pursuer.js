@@ -42,9 +42,11 @@ export function createPursuer(scene) {
     form(jaw,hull,mouth,0,-.039,-.21,.172,.041,.268);
     const bite=pivot(head,0,-.038,-.49);
     const bitePosition=new T.Vector3();
+    const eyes=[];
     for(const s of [-1,1]){
         form(head,hull,mouth,s*.236,.143,-.31,.095,.077,.112);
-        form(head,hull,ember,s*.26,.159,-.342,.077,.034,.089).rotation.z=s*.29;
+        const eye=form(head,hull,ember,s*.26,.159,-.342,.077,.034,.089);
+        eye.rotation.z=s*.29; eyes.push(eye);
         form(head,hull,mouth,s*.31,.16,-.38,.009,.026,.011);
         form(head,hull,skull,s*.226,.217,-.303,.119,.054,.147).rotation.z=s*.34;
         form(head,hull,mouth,s*.083,.092,-.674,.04,.027,.027);
@@ -88,23 +90,30 @@ export function createPursuer(scene) {
         const gap=.80+chase.lead;
         root.position.set(chase.x,0,gap+chase.stumble*.48+hoist*.58);
         root.rotation.y=Math.atan2(chase.x-player.x,gap)*.81;
-        const run=chase.lead>0?1:0,phase=chase.stride*2.28;
+        const opening=state==='intro', awake=opening?chase.wake:1;
+        const run=opening ? T.MathUtils.smoothstep(chase.intro,5.65,6.25) : Number(chase.lead>0);
+        root.rotation.y=T.MathUtils.lerp(.58,root.rotation.y,awake);
+        body.scale.y=.84+.16*awake;
+        for(const eye of eyes) eye.scale.y=.034*awake;
+        const phase=chase.stride*2.28;
         const lunge=state==='catching'?Math.sin(Math.PI*Math.max(0,1-chase.lead/.85)):0;
         const pinned=state==='over'||chase.lead===0;
-        body.position.y=run*.081*Math.abs(Math.sin(phase))+.013*Math.sin(t*3)+lunge*.19;
+        body.position.y=-.19*(1-awake)+run*.081*Math.abs(Math.sin(phase))+.013*Math.sin(t*3)+lunge*.19;
         body.rotation.x=.09*Math.sin(phase)*run+lunge*.24-(pinned?.19:0)+hoist*.36;
         head.rotation.x=.1*Math.cos(phase+.5)*run-.07-(pinned?.24:0)+hoist*.63;
         head.rotation.z=hoist*(.13+.075*Math.sin(t*6));
         jaw.rotation.x=-(.21+.09*Math.sin(phase)+lunge*.51)*(1-grip)-.055*grip;
-        if(state==='intro'){
-            const snap=Math.sin(Math.PI*T.MathUtils.smoothstep(chase.intro,.08,.48));
+        if(opening){
+            head.rotation.x+=.66*(1-awake)-.24*awake*(1-run);
+            jaw.rotation.x*=awake;
+            const snap=Math.sin(Math.PI*T.MathUtils.smoothstep(chase.intro,3.5,5.65));
             jaw.rotation.x-=.57*snap;
             head.rotation.x-=.14*snap;
         }
-        tailBase.rotation.y=.34*Math.sin(t*4.1);tip.rotation.y=.37*Math.sin(t*4.1-.8);
+        tailBase.rotation.y=.74*(1-awake)+awake*.34*Math.sin(t*4.1);tip.rotation.y=.60*(1-awake)+awake*.37*Math.sin(t*4.1-.8);
         for(const {hip,ankle,s,rear} of legs){
             const swing=Math.sin(phase+(rear?2.9:0)+s*.51);
-            hip.rotation.x=swing*.72*run;
+            hip.rotation.x=swing*.72*run+(rear?-.72:.68)*(1-awake);
             ankle.rotation.x=-.19-Math.max(0,swing)*.78*run;
         }
         return grip>0 ? bite.getWorldPosition(bitePosition) : null;

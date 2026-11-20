@@ -1,3 +1,5 @@
+import {tripStoneAt} from './cave.js';
+import {createScene} from './scene.js';
 import {createTempleScene} from './temple.js';
 const canvas = document.getElementById('world');
 let draw;
@@ -18,15 +20,15 @@ let state = 'start', distance = 0, score = 0, obstacleCount = 0;
 let entities = [], nextObstacle = 0, time = 0, menuBlend = 1;
 const laneWidth = 1.55;
 const player = { x: 0, lane: 0, y: 0, velocity: 0, jumps: 0, duck: false, crouch: 0, fallen: 0, kneeling: 0 };
-const startingLead = 30, hitPenalty = 10;
+const startingLead = 5, hitPenalty = 10;
 const cleanMetresPerLeadMetre = 10, recoverySeconds = 1.85;
 
-const introLead = 24;
+// The sleeping ridgeback is just inside the entrance, beside the path.
+const denAt = 2.4;
 const chase = {lead:startingLead, x:1.06, stride:0, stumble:0, hold:0};
 const gestures = new Map();
-// The opening accelerates from rest to the initial gameplay speed of 8 m/s.
-const introDuration = 2.8;
-const introLength = 4 * introDuration;
+const tripTime = 2.8, flightTime = 5.65, introDuration = flightTime + 2;
+const introLength = tripStoneAt + .35 + 8;
 
 let slideTime = 0;
 let duckKey = false;
@@ -68,7 +70,7 @@ function start() {
     fillCourse();
     clearInput();
     Object.assign(player, {x:0, lane:0, y:0, velocity:0, jumps:0, crouch:0, fallen:0, kneeling:0});
-    Object.assign(chase, {lead:introLead, x:1.06, stride:0, stumble:0, hold:0, intro:0, runIn:0, hitTime:0});
+    Object.assign(chase, {lead:-denAt, x:1.5, stride:0, stumble:0, hold:0, intro:0, wake:0, stone:0, runIn:0, hitTime:0});
     el('menu').hidden = true;
     el('live').hidden = el('lead-hud').hidden = state === 'intro';
     el('lead').textContent = startingLead + ' m';
@@ -83,6 +85,9 @@ function finishIntro() {
     document.body.dataset.state = state;
     chase.lead = startingLead;
     chase.runIn = introLength;
+    chase.stride = introLength - denAt - startingLead;
+    chase.x = .9;
+    player.fallen = player.kneeling = 0;
     el('skip').hidden = true;
     el('live').hidden = el('lead-hud').hidden = false;
 }
@@ -269,12 +274,21 @@ function frame(now) {
     lastFrame = now;
     time += dt;
     if (state === 'intro') {
-        chase.intro = Math.min(1, chase.intro + elapsed / introDuration);
-        const u = chase.intro;
-        chase.runIn = introLength * u * u;
-        chase.lead = introLead + (startingLead-introLead)*u*u;
-        chase.stride = chase.runIn - (chase.lead-introLead);
-        if (u === 1) finishIntro();
+        chase.intro = Math.min(introDuration, chase.intro + elapsed);
+        const t = chase.intro;
+        const trip = easePhase(t, tripTime, tripTime+.40);
+        const kneel = easePhase(t, 4.62, 5.14);
+        const rise = easePhase(t, 5.17, flightTime);
+        const flight = Math.max(0,(t-flightTime)/2);
+        chase.runIn = Math.min(t/tripTime,1)*tripStoneAt + .35*trip + 8*flight*flight;
+        player.fallen = trip*(1-kneel);
+        player.kneeling = kneel*(1-rise);
+        chase.stone = easePhase(t,tripTime,tripTime+.62);
+        chase.wake = easePhase(t,tripTime+.53,4.45);
+        chase.stride = (introLength - denAt - startingLead)*flight*flight;
+        chase.lead = chase.runIn - denAt - chase.stride;
+        chase.x = 1.5 - .6*flight;
+        if (t === introDuration) finishIntro();
     } else if (state === 'playing') {
         const steps = Math.max(1,Math.ceil(dt*90));
         for(let i=0;i<steps && state==='playing';i++) advance(dt/steps);

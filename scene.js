@@ -1,5 +1,6 @@
+import {caveFaces,tripStoneAt} from './cave.js';
 // World units are metres. The camera looks along +z, with the runner at z = 8.
-function createScene(canvas, laneWidth) {
+export function createScene(canvas, laneWidth) {
     const ctx = canvas.getContext('2d');
     let w, h, horizon, center, focal;
     const tau = Math.PI * 2;
@@ -162,13 +163,28 @@ function createScene(canvas, laneWidth) {
         ctx.drawImage(capture,frame%8*384,Math.floor(frame/8)*256,384,256,
             px-2.1*scale,py-2.1*scale,4.2*scale,2.8*scale);
     }
-    function beast(x,z,distance){
+    function caveWall(face,origin){
+        // Clip a facet when the camera crosses it at the cave entrance.
+        const points=face.vertices.map(([x,y,d])=>[x,y,origin+d]);
+        const clipped=[];
+        for(let i=0;i<3;i++){
+            const a=points[i], b=points[(i+1)%3];
+            if(a[2]>=.8)clipped.push(a);
+            if((a[2]>=.8)!==(b[2]>=.8)){
+                const u=(.8-a[2])/(b[2]-a[2]);
+                clipped.push([a[0]+u*(b[0]-a[0]),a[1]+u*(b[1]-a[1]),.8]);
+            }
+        }
+        if(clipped.length>=3)polygon('#'+face.color.toString(16),clipped.map(p=>project(...p)));
+    }
+    function beast(x,z,distance,awake=1){
         if(!ridgeback.naturalWidth)return;
         const [px,py]=project(x,0,z),scale=focal/z;
         const phase=Math.floor(distance*2.28/(Math.PI*2)*8)%8;
         ellipse('#3e40474d',px,py,scale*.52,scale*.18);
-        ctx.drawImage(ridgeback,phase*240,0,240,224,px-scale*1.34,py-scale*1.70,
-            scale*2.68,scale*2.50);
+        const height=scale*(.54+.46*awake);
+        ctx.drawImage(ridgeback,phase*240,0,240,224,px-scale*1.34,py-height*1.70,
+            scale*2.68,height*2.50);
     }
     function runner(player,distance,active,stumble,z) {
         const scale=focal/z, [x,ground]=project(player.x,0,z);
@@ -193,11 +209,24 @@ function createScene(canvas, laneWidth) {
         horizon=h*((portrait?.45:.43)-menuBlend*(portrait?.22:0));
         focal=Math.min(h*(portrait?.98:1.18),w*1.65);
         const strideDistance=state==='intro' ? chase.runIn : distance+(chase.runIn || 0);
-        const reveal=Math.max(0,Math.min(1,(chase.intro-.14)/.46));
-        const pullback=state==='intro' ? chase.lead*(1-reveal*reveal*(3-2*reveal)) : 0;
+        const opening=state==='intro';
+        const focus=opening ? Math.min(1,Math.max(0,(chase.intro-3.30)/.63),Math.max(0,(7.45-chase.intro)/1.8)) : 0;
+        const pullback=focus*1.8;
         const roadDistance=32+strideDistance-pullback;
         landscape(time);road(roadDistance);
         const items=[];
+        if(opening || (state==='playing' && distance<20)){
+            const origin=8+pullback-strideDistance;
+            for(const face of caveFaces){
+                const z=origin+face.vertices.reduce((sum,v)=>sum+v[2],0)/3;
+                items.push({z,draw:()=>caveWall(face,origin)});
+            }
+            const roll=opening?chase.stone:1, z=origin+tripStoneAt-.49*roll;
+            if(z>1)items.push({z,draw:()=>{
+                const [x,y]=project(.09+1.02*roll,.13+.18*Math.sin(Math.PI*roll),z),r=focal*.32/z;
+                polygon('#b28c69',[[x-r,y],[x-r*.4,y-r*.68],[x+r*.62,y-r*.45],[x+r,y+r*.4],[x-r*.6,y+r*.42]]);
+            }});
+        }
         for(let i=0;i<13;i++){
             const z=4+i*11-roadDistance%11;
             if(z>2)items.push({z,draw:()=>{torch(-2.69,z,time);torch(2.69,z,time);}});
@@ -215,7 +244,7 @@ function createScene(canvas, laneWidth) {
         }
         if(state!=='start' && !gripped){
             const z=8+pullback-(.8+chase.lead+chase.stumble*.48);
-            if(z>1.5)items.push({z,draw:()=>beast(chase.x,z,chase.stride)});
+            if(z>1.5)items.push({z,draw:()=>beast(chase.x,z,chase.stride,opening?chase.wake:1)});
         }
         items.sort((a,b)=>b.z-a.z).forEach(item=>item.draw());
         const shade=ctx.createLinearGradient(0,0,portrait?0:w,portrait?h:0);

@@ -199,13 +199,14 @@ export function createRunner(scene) {
     return function pose(state,distance,p,t,menu,stumble=0,bite=null,hold=0,intro=0){
         const dt=Math.min(.08,Math.max(0,t-lastTime));lastTime=t;
         const opening=state==='intro';
-        const glance=opening ? Math.sin(Math.PI*T.MathUtils.smoothstep(intro,0,.7)) : 0;
+        const glance=opening ? Math.sin(Math.PI*T.MathUtils.smoothstep(intro,3.4,6.1)) : 0;
+        const walking=opening && intro<2.8;
         const running=state==='playing' || opening,air=T.MathUtils.smoothstep(p.y,0,.3);
         if(running && !p.y && airborne)impact=1;
         if(!running)impact=0;
         airborne=p.y>0;impact*=Math.exp(-11*dt);
-        const cycle=running?distance/4.25:0,angle=cycle*2*Math.PI;
-        const c=p.crouch, travel=running?(1-c)*(1-air)*(opening?T.MathUtils.smoothstep(intro,0,.50):1):0;
+        const cycle=running?distance/(walking?1.65:4.25):0,angle=cycle*2*Math.PI;
+        const c=p.crouch, travel=running?(1-c)*(1-air)*(walking?.72:1):0;
         const {fallen, kneeling} = p;
         const lean=p.lane*1.55-p.x, breath=Math.sin(t*2.2)*.008;
         root.position.set(p.x,p.y,stumble*.48);root.rotation.z=-lean*.105-stumble*.61;
@@ -222,7 +223,7 @@ export function createRunner(scene) {
         hips.rotation.z=.038*Math.cos(angle-.55)*travel + 1.48*fallen + .13*kneeling;
         spine.rotation.y-=.45*glance+.26*fallen;
         spine.rotation.x-=.16*fallen+.50*kneeling;
-        spine.rotation.x-=opening ? .18*Math.sin(Math.PI*intro) : 0;
+        spine.rotation.x+=walking ? .12 : 0;
         neck.rotation.x=-spine.rotation.x*.73;
         neck.rotation.y=-.55*spine.rotation.y-lean*.12-1.34*glance;
         wrap.rotation.z=.032*Math.sin(angle)*travel;
@@ -231,10 +232,11 @@ export function createRunner(scene) {
             const phase=(cycle+(s>0?.5:0))%1;
             // During stance the ankle travels backward with the paving. The
             // recovery arc lifts the heel and brings the foot forward again.
-            const stance=.19, swing=Math.max(0,(phase-stance)/(1-stance));
-            const stride=.5*4.25*stance;
-            const z=phase<stance? -stride+4.25*phase : stride*Math.cos(swing*Math.PI);
-            const lift=.29*Math.sin(swing*Math.PI)**1.5;
+            const stance=walking?.52:.19, swing=Math.max(0,(phase-stance)/(1-stance));
+            const strideLength=walking?1.65:4.25;
+            const stride=.5*strideLength*stance;
+            const z=phase<stance? -stride+strideLength*phase : stride*Math.cos(swing*Math.PI);
+            const lift=(walking?.09:.29)*Math.sin(swing*Math.PI)**1.5;
             let targetZ=mix(s*.055,z,travel);
             let targetY=.066+lift*travel;
             targetZ=mix(targetZ,s*.29,air);targetY+=air*(s>0?.31:.18);

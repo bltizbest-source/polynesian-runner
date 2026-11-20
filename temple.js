@@ -1,4 +1,5 @@
 import * as T from './vendor/three.module.min.js';
+import {caveFaces,tripStoneAt} from './cave.js';
 import {createRunner} from './runner.js';
 import {createPursuer} from './pursuer.js';
 
@@ -134,6 +135,38 @@ export function createTempleScene(canvas) {
     }
     const water=piece(scene,box,0x358888,0,-1.03,-56,300,.25,260);water.castShadow=false;
     for(let i=0;i<12;i++)piece(scene,rock,0x688575,(i-5)*17,-.8,-85-random()*20,27,12+random()*21,26);
+    const cave=new T.Group();
+    scene.add(cave);
+    const positions=[], colors=[];
+    for(const face of caveFaces){
+        const color=new T.Color(face.color);
+        for(const [x,y,d] of face.vertices){
+            positions.push(x,y,-d);
+            colors.push(color.r,color.g,color.b);
+        }
+    }
+    const shell=new T.BufferGeometry();
+    shell.setAttribute('position',new T.Float32BufferAttribute(positions,3));
+    shell.setAttribute('color',new T.Float32BufferAttribute(colors,3));
+    shell.computeVertexNormals();
+    const vault=new T.Mesh(shell,new T.MeshStandardMaterial({vertexColors:true,side:T.DoubleSide,roughness:1}));
+    vault.castShadow=vault.receiveShadow=true;cave.add(vault);
+    const floor=piece(cave,box,0x544c43,0,-.043,-5.5,6.25,.12,8.4);
+    floor.castShadow=false;
+    for(let i=0;i<32;i++){
+        const d=1.55+(i*.731%1)*7.8, x=(i*.38197%1-.5)*5.9;
+        const shard=piece(cave,rock,i%3?0x655d52:0x48494a,x,.027,-d,.16+i%5*.08,.037,.10+i%3*.05);
+        shard.rotation.y=i*1.4;
+    }
+    for(let i=0;i<16;i++){
+        const side=i%2?1:-1, d=1.45+i*.49;
+        piece(cave,rock,i%3?0x485056:0x625f59,side*(2.95+.19*Math.sin(i)),.10,-d,1.25,.85,1.5);
+        piece(cave,cone,0x404954,side*(1.45+.30*Math.cos(i)),3.70,-d,.35,.72,.44,Math.PI);
+    }
+    const looseStone=piece(cave,rock,0xb28c69,.09,.14,-tripStoneAt,.74,.42,.55);
+    const caveLight=new T.PointLight(0xffc599,17,10,2);
+    caveLight.position.set(-1.8,2.2,-3.6);cave.add(caveLight);
+    cave.visible=false;
     const poseRunner=createRunner(scene);
     const posePursuer=createPursuer(scene);
     const shadow=new T.Mesh(new T.CircleGeometry(1,20),new T.MeshBasicMaterial({color:0x29382d,transparent:true,opacity:.38,depthWrite:false}));
@@ -172,16 +205,24 @@ export function createTempleScene(canvas) {
             2.36-.79*menu-.55*catchFocus,
             T.MathUtils.lerp(T.MathUtils.lerp(chaseDepth,3.85+narrow*.7,menu),2.05,catchFocus));
         camera.lookAt(p.x*(.16+.84*catchFocus),1.08-.47*catchFocus,-4.6+menu*3.7+5.36*catchFocus);
-        if(state==='intro'){
-            const reveal=T.MathUtils.smoothstep(chase.intro,.14,.60);
-            const follow=T.MathUtils.smoothstep(chase.intro,.5,1);
-            const muzzleZ=chase.lead;
-            camera.getWorldDirection(shotDirection);
-            shotDirection.multiplyScalar(5).add(camera.position);
-            shotPosition.set(2.15 + reveal*(1+narrow),1.05+.48*reveal,
-                muzzleZ*(1-reveal)-1.6+3.3*reveal);
-            shotTarget.set(T.MathUtils.lerp(chase.x,.35,reveal),.87,muzzleZ*(1-reveal));
+        const opening=state==='intro';
+        cave.visible=opening || (state==='playing' && distance<20);
+        if(cave.visible){
+            cave.position.z=chase.runIn+(opening?0:distance);
+            const roll=opening?chase.stone:1;
+            looseStone.position.set(.09+1.02*roll,.14+.18*Math.sin(Math.PI*roll),-tripStoneAt+.49*roll);
+            looseStone.rotation.z=-2.65*roll;
+        }
+        if(opening){
+            const focus=T.MathUtils.smoothstep(chase.intro,3.30,3.93);
+            const follow=T.MathUtils.smoothstep(chase.intro,5.55,7.50);
+            const trip=p.fallen+p.kneeling;
+            camera.getWorldDirection(shotDirection).multiplyScalar(5).add(camera.position);
+            // Follow the walk from the entrance, then cut in beside the waking head.
+            shotPosition.set(-1.36-.30*trip,1.45,3.3+.8*narrow);
+            shotPosition.lerp(shotTarget.set(-.50,1.02,chase.lead-.98),focus);
             camera.position.lerp(shotPosition,1-follow);
+            shotTarget.set(.04+focus*1.40,.91-.44*trip*(1-focus),-.40+focus*(chase.lead+.41));
             camera.lookAt(shotDirection.lerp(shotTarget,1-follow));
         }
         const fallShot = p.fallen + p.kneeling;

@@ -10,7 +10,7 @@
   <canvas id="world" aria-label="A three-lane stone path through jungle temple gates"></canvas>
 </div>
 <aside class="hud" aria-label="Run statistics">
-  <div class="stats"><span id="lead-hud" hidden>Lead <b id="lead">30 m</b></span><span id="live" hidden>Score <b id="score">0</b></span><span>Best <b id="best">0</b></span></div>
+  <div class="stats"><span id="lead-hud" hidden>Lead <b id="lead">5 m</b></span><span id="live" hidden>Score <b id="score">0</b></span><span>Best <b id="best">0</b></span></div>
   <span id="hit" role="status" hidden>Hit · −10 m</span>
 </aside>
 <div class="overlay">
@@ -30,10 +30,10 @@
 </div>
 <dialog id="guide" aria-labelledby="guide-title">
   <form method="dialog"><div class="guide-top"><img src="assets/temple-mark.svg" width="38" height="38" alt=""><button class="close" aria-label="Close controls">×</button></div>
-    <h2 id="guide-title">How to play</h2><p>You start 30 metres ahead of the ridgeback. Gain 1 metre of lead for every 10 metres of clean running. When you fall, the ridgeback gains 10 metres while you get back up. If it reaches you first, the run ends. Earn 1 point per metre, 1 per obstacle passed, and 10 per gem. Follow the high gems as you jump and the low gems as you duck.</p>
+    <h2 id="guide-title">How to play</h2><p>You start 5 metres ahead of the ridgeback. Gain 1 metre of lead for every 10 metres of clean running. When you fall, the ridgeback gains 10 metres while you get back up. If it reaches you first, the run ends. Earn 1 point per metre, 1 per obstacle passed, and 10 per gem. Follow the high gems as you jump and the low gems as you duck.</p>
     <dl><div><dt>Switch lanes</dt><dd>← / → or swipe sideways</dd></div><div><dt>Jump</dt><dd>Space / ↑ or swipe up<br><small>Jump again in the air to go higher.</small></dd></div><div><dt>Duck</dt><dd>Hold ↓ or swipe down</dd></div></dl>
     <button class="done">Got it</button>
   </form>
 </dialog>
-<script src="scene.js" defer></script><script src="game.js" type="module"></script>
+<script src="game.js" type="module"></script>
 </body></html>
