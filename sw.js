@@ -1,5 +1,5 @@
-const CACHE = 'polynesian-runner-v20';
-const urls = ['./','./index.html','./style.css?v=18','./scene.js','./cave.js','./temple.js','./runner.js','./pursuer.js','./vendor/three.module.min.js',
+const CACHE = 'polynesian-runner-v21';
+const urls = ['./','./index.html','./style.css?v=21','./scene.js','./viewport.js','./cave.js','./temple.js','./runner.js','./pursuer.js','./vendor/three.module.min.js',
     './game.js','./manifest.json','./favicon.png','./assets/temple-mark.svg','./assets/apple-touch-icon.png',
     './assets/icon-192.png','./assets/icon-512.png','./assets/runner-poses.webp','./assets/ridgeback-poses.webp',
     './assets/ridgeback-grab.webp'];

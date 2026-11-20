@@ -1,3 +1,4 @@
+import {renderPixelRatio} from './viewport.js';
 import * as T from './vendor/three.module.min.js';
 import {caveFaces,tripStoneAt} from './cave.js';
 import {createRunner} from './runner.js';
@@ -6,7 +7,6 @@ import {createPursuer} from './pursuer.js';
 // Static scenery is batched by shape. One repeating section carries the whole forest.
 export function createTempleScene(canvas) {
     const renderer = new T.WebGLRenderer({canvas, antialias:true, powerPreference:'high-performance'});
-    renderer.setPixelRatio(Math.min(devicePixelRatio,1.6));
     renderer.shadowMap.enabled=true;
     renderer.shadowMap.type=T.PCFSoftShadowMap;
     const scene = new T.Scene(), camera = new T.PerspectiveCamera(58,1,.1,160);
@@ -186,13 +186,14 @@ export function createTempleScene(canvas) {
     }
     const free={barrier:[],gate:[],gem:[]};
     const shotPosition=new T.Vector3(),shotTarget=new T.Vector3(),shotDirection=new T.Vector3();
-    let prevW=0,prevH=0;
+    let prevW=0,prevH=0,previousRatio=0;
     return function draw(state,distance,p,entities,t,menu,chase){
         const w=canvas.clientWidth,h=canvas.clientHeight;
         if(!w || !h)return;
-        if(w!==prevW||h!==prevH){
-            renderer.setPixelRatio(Math.min(devicePixelRatio,1.75,Math.sqrt(3200000/(w*h))));
-            renderer.setSize(w,h,false);prevW=w;prevH=h;
+        const ratio=renderPixelRatio(w,h);
+        if(w!==prevW || h!==prevH || ratio!==previousRatio){
+            renderer.setDrawingBufferSize(w,h,ratio);
+            prevW=w;prevH=h;previousRatio=ratio;
         }
         const aspect=w/h, narrow=1-T.MathUtils.smoothstep(aspect,.65,1.12);
         const sway=Math.sin(t*.19)*.34;

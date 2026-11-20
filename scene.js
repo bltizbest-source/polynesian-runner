@@ -1,19 +1,17 @@
+import {renderPixelRatio} from './viewport.js';
 import {caveFaces,tripStoneAt} from './cave.js';
 // World units are metres. The camera looks along +z, with the runner at z = 8.
 export function createScene(canvas, laneWidth) {
     const ctx = canvas.getContext('2d');
     let w, h, horizon, center, focal;
     const tau = Math.PI * 2;
-    function resize() {
-        w = canvas.clientWidth;
-        h = canvas.clientHeight;
-        const ratio = Math.min(devicePixelRatio || 1, 2);
-        canvas.width = Math.round(w * ratio);
-        canvas.height = Math.round(h * ratio);
-        ctx.setTransform(canvas.width / w, 0, 0, canvas.height / h, 0, 0);
+    let previousRatio=0;
+    function resize(width,height,ratio) {
+        w=width; h=height; previousRatio=ratio;
+        canvas.width=Math.max(1,Math.floor(w*ratio));
+        canvas.height=Math.max(1,Math.floor(h*ratio));
+        ctx.setTransform(canvas.width/w,0,0,canvas.height/h,0,0);
     }
-    resize();
-    new ResizeObserver(resize).observe(canvas);
     function polygon(color, points) {
         ctx.beginPath();
         points.forEach(([x,y], i) => i ? ctx.lineTo(x,y) : ctx.moveTo(x,y));
@@ -204,6 +202,10 @@ export function createScene(canvas, laneWidth) {
         ctx.restore();
     }
     return function draw(state, distance, player, entities, time, menuBlend, chase) {
+        const width=canvas.clientWidth, height=canvas.clientHeight;
+        if(!width || !height)return;
+        const ratio=renderPixelRatio(width,height);
+        if(width!==w || height!==h || ratio!==previousRatio)resize(width,height,ratio);
         const portrait=w<h*.84;
         center=w*(.5+menuBlend*(portrait?.12:.19));
         horizon=h*((portrait?.45:.43)-menuBlend*(portrait?.22:0));

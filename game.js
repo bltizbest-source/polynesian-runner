@@ -21,7 +21,7 @@ let entities = [], nextObstacle = 0, time = 0, menuBlend = 1;
 const laneWidth = 1.55;
 const player = { x: 0, lane: 0, y: 0, velocity: 0, jumps: 0, duck: false, crouch: 0, fallen: 0, kneeling: 0 };
 const startingLead = 5, hitPenalty = 10;
-const cleanMetresPerLeadMetre = 10, recoverySeconds = 1.85;
+const cleanMetresPerLeadMetre = 16, recoverySeconds = 1.85;
 
 // The sleeping ridgeback is just inside the entrance, beside the path.
 const denAt = 2.4;
