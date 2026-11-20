@@ -50,12 +50,6 @@ dialog::backdrop{background:#0c211bc9}
 h2{font-size:34px;letter-spacing:-.055em;margin:18px 0 9px}
 dialog p,dd{font-size:14px;line-height:1.5}dl{margin:20px 0}dl>div{border-top:1px solid #1a382a30;display:grid;grid-template-columns:36% 1fr;padding:11px 0}
 dt{font-size:14px;font-weight:750}dd{margin:0}small{color:#536658}.done{width:100%}
-body:is([data-state=playing],[data-state=catching]){display:block;padding:0;touch-action:none}
-body:is([data-state=playing],[data-state=catching]) .stage{position:absolute;inset:0;padding:0}
-body:is([data-state=playing],[data-state=catching]) .stage::before,body:is([data-state=playing],[data-state=catching]) .stage::after,body:is([data-state=playing],[data-state=catching]) #help,body:is([data-state=playing],[data-state=catching]) footer{display:none}
-body:is([data-state=playing],[data-state=catching]) header{position:absolute;top:max(12px,env(safe-area-inset-top));left:max(16px,env(safe-area-inset-left));right:max(16px,env(safe-area-inset-right));padding:0;background:none;color:#fff5db;text-shadow:0 1px 5px #14271f;pointer-events:none}
-body:is([data-state=playing],[data-state=catching]) .stats{gap:5px}body:is([data-state=playing],[data-state=catching]) .stats>span{padding:6px 10px;border-radius:5px;background:#153127dd}
-@media(max-width:540px){body:is([data-state=playing],[data-state=catching]) .brand span{display:none}}
 @media(pointer:coarse){.keys{display:none}.touch{display:block}}
 @media(max-aspect-ratio:5/6){
   .stage{align-items:end}
@@ -66,3 +60,41 @@ body:is([data-state=playing],[data-state=catching]) .stats{gap:5px}body:is([data
 @media(max-width:480px){.brand{font-size:11px;gap:6px}.brand img{width:32px;height:32px}.stats>span{font-size:9px;gap:4px}.stats b{font-size:15px}#help{font-size:12px;padding:0 8px}.control-label{display:none}footer{justify-content:center}.keys{gap:10px}}
 @media(max-height:460px){header{padding-block:5px}.brand img{width:30px;height:30px}#help{min-height:30px}main{padding:10px 3vw}h1{font-size:clamp(34px,13vh,56px);margin-top:8px}main p{font-size:12px;margin:8px 0}#start,#home{min-height:36px;padding:8px 14px}footer{padding-block:5px}.stage{padding-block:40px 30px}}
 @media(max-height:300px){main p{display:none}.actions{margin-top:10px}}
+
+
+
+body {display:grid;grid-template: minmax(0,1fr) / minmax(0,1fr);place-items:center}
+.stage {grid-area:auto;position:absolute;inset:0;padding:0}
+.stage::before {background:radial-gradient(ellipse at center,#0b211add, #0b211a85 38%,transparent 76%)}
+.overlay {position:relative;z-index:1;grid-area:1/1;display:flex;flex-direction:column;
+  align-items:center;justify-content:safe center;width:100%;max-height:100dvh;overflow:auto;
+  padding:12px var(--side);text-align:center;pointer-events:none}
+.overlay button,.overlay main {pointer-events:auto}
+header,footer {position:static;flex-wrap:wrap;justify-content:center;background:none;padding:6px 0}
+header {gap:12px 20px}
+main {width:min(100%,40rem);max-width:none;max-height:none;overflow:visible;padding:10px 0}
+main p {margin-inline:auto}
+.course,.actions,.guide-top {justify-content:center}
+footer {gap:12px}
+dialog {text-align:center}
+dl>div {grid-template-columns:1fr;gap:3px}
+dd {margin:0}
+body:is([data-state=intro],[data-state=playing],[data-state=catching]) {touch-action:none}
+body:is([data-state=intro],[data-state=playing],[data-state=catching]) .stage::before,
+body:is([data-state=intro],[data-state=playing],[data-state=catching]) :is(footer,#help,.brand),
+body[data-state=intro] header,
+body[data-state=intro] .hud {display:none}
+.hud {
+  position:fixed;z-index:2;top:max(12px,env(safe-area-inset-top));
+  right:max(16px,env(safe-area-inset-right));display:grid;justify-items:end;gap:5px;
+  color:#fff5db;pointer-events:none;
+}
+.hud .stats {gap:5px}
+.hud .stats>span {padding:6px 10px;border-radius:5px;background:#153127dd}
+#skip,#hit {border-radius:6px;background:#122b23e8;color:#fff5df;padding:6px 12px}
+#hit {font-size:13px;font-weight:750;color:#ffd69a}
+#skip {
+  position:fixed;right:max(24px,env(safe-area-inset-right));bottom:max(24px,env(safe-area-inset-bottom));
+  border:1px solid #f7e3bc80;min-height:44px;padding-inline:16px;
+}
+@media(max-height:540px){.overlay{gap:0}main{padding:2px 0}main h1{font-size:clamp(34px,13vh,72px)}}

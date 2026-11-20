@@ -123,8 +123,8 @@ function createScene(canvas, laneWidth) {
             }
         }
     }
-    function gem(x,z,t) {
-        const y=1.12+.09*Math.sin(t*3+z), ring=[];
+    function gem(e,z,t) {
+        const x=e.x, y=e.height+.08*Math.sin(t*3+e.at), ring=[];
         for(let i=0;i<6;i++){const a=i*tau/6+t*2;ring.push([x+Math.cos(a)*.28,y,z+Math.sin(a)*.28]);}
         const facets=ring.map((p,i)=>[p,ring[(i+1)%6],i]).sort((a,b)=>b[0][2]+b[1][2]-a[0][2]-a[1][2]);
         for(const [a,b,i] of facets){
@@ -132,8 +132,13 @@ function createScene(canvas, laneWidth) {
             face(['#e99932','#c47728','#edac44'][i%3],a,b,[x,y-.38,z]);
         }
     }
-    function obstacle(e,z) {
+    function obstacle(e,z,t) {
         const wood=['#884735','#582f32','#c88555'];
+        if(e.kind==='barrier' && e.struckAt!==undefined){
+            const fall=Math.min(1,(t-e.struckAt)/.30);
+            box(e.x,0,z,.76,.67-.48*fall,.25+.22*fall,wood);
+            return;
+        }
         if(e.kind==='gate'){
             for(const offset of [-.71,.71])box(e.x+offset,0,z,.08,1.85,.17,wood);
             box(e.x,1.12,z,.8,.68,.19,wood);
@@ -165,18 +170,20 @@ function createScene(canvas, laneWidth) {
         ctx.drawImage(ridgeback,phase*240,0,240,224,px-scale*1.34,py-scale*1.70,
             scale*2.68,scale*2.50);
     }
-    function runner(player,distance,active,stumble) {
-        const z=8-stumble*.48, scale=focal/z, [x,ground]=project(player.x,0,z);
+    function runner(player,distance,active,stumble,z) {
+        const scale=focal/z, [x,ground]=project(player.x,0,z);
         ellipse('#3e40474d',x,ground,scale*.37,scale*.10);
         if(!athlete.naturalWidth)return;
         const phase=Math.floor(distance/4.25*8)%8;
         let frame=phase,row=0;
         if(!active){row=2;frame=7;}
+        else if(player.kneeling>.05){row=1;frame=Math.round(player.kneeling*7);}
+        else if(player.fallen>.05){row=0;frame=2;}
         else if(player.crouch>.08){row=1;frame=Math.round(player.crouch*7);}
         else if(player.y>.08){row=2;frame=Math.min(6,phase);}
         ctx.save();
-        ctx.translate(x,ground-player.y*scale);
-        ctx.rotate((player.lane*laneWidth-player.x)*.1+stumble*.61);
+        ctx.translate(x,ground-(player.y+.26*player.fallen)*scale);
+        ctx.rotate((player.lane*laneWidth-player.x)*.1+stumble*.61+player.fallen*1.48+player.kneeling*.14);
         ctx.drawImage(athlete,frame*160,row*224,160,224,-.75*scale,-1.92*scale,1.5*scale,2.1*scale);
         ctx.restore();
     }
@@ -185,24 +192,29 @@ function createScene(canvas, laneWidth) {
         center=w*(.5+menuBlend*(portrait?.12:.19));
         horizon=h*((portrait?.45:.43)-menuBlend*(portrait?.22:0));
         focal=Math.min(h*(portrait?.98:1.18),w*1.65);
-        landscape(time);road(distance);
+        const strideDistance=state==='intro' ? chase.runIn : distance+(chase.runIn || 0);
+        const reveal=Math.max(0,Math.min(1,(chase.intro-.14)/.46));
+        const pullback=state==='intro' ? chase.lead*(1-reveal*reveal*(3-2*reveal)) : 0;
+        const roadDistance=32+strideDistance-pullback;
+        landscape(time);road(roadDistance);
         const items=[];
         for(let i=0;i<13;i++){
-            const z=4+i*11-distance%11;
+            const z=4+i*11-roadDistance%11;
             if(z>2)items.push({z,draw:()=>{torch(-2.69,z,time);torch(2.69,z,time);}});
         }
         for(const e of entities){
-            const z=e.at-distance+8;
-            if(z>1.5&&z<155)items.push({z,draw:()=>e.kind==='gem'?gem(e.x,z,time):obstacle(e,z)});
+            const z=e.at-distance+8+pullback;
+            if(z>1.5&&z<155)items.push({z,draw:()=>e.kind==='gem'?gem(e,z,time):obstacle(e,z,time)});
         }
         const gripped=(state==='catching'||state==='over') && chase.hold>0 && capture.naturalWidth>0;
         if(gripped){
             items.push({z:7,draw:()=>grab(player.x,7,chase.hold)});
         }else{
-            items.push({z:8-chase.stumble*.48,draw:()=>runner(player,distance,state!=='start',chase.stumble)});
+            const z=8+pullback-chase.stumble*.48;
+            items.push({z,draw:()=>runner(player,strideDistance,state!=='start',chase.stumble,z)});
         }
         if(state!=='start' && !gripped){
-            const z=8-(.8+chase.lead+chase.stumble*.48);
+            const z=8+pullback-(.8+chase.lead+chase.stumble*.48);
             if(z>1.5)items.push({z,draw:()=>beast(chase.x,z,chase.stride)});
         }
         items.sort((a,b)=>b.z-a.z).forEach(item=>item.draw());

@@ -81,7 +81,7 @@ export function createPursuer(scene) {
         legs.push({hip,ankle,s,rear});
     }
     return function animate(state,player,t,chase) {
-        root.visible=state!=='start';
+        root.visible=state!=='start' && (state==='intro' || chase.lead<14);
         if(!root.visible)return;
         const grip=T.MathUtils.smoothstep(chase.hold,0,.22);
         const hoist=T.MathUtils.smoothstep(chase.hold,.22,.91);
@@ -96,6 +96,11 @@ export function createPursuer(scene) {
         head.rotation.x=.1*Math.cos(phase+.5)*run-.07-(pinned?.24:0)+hoist*.63;
         head.rotation.z=hoist*(.13+.075*Math.sin(t*6));
         jaw.rotation.x=-(.21+.09*Math.sin(phase)+lunge*.51)*(1-grip)-.055*grip;
+        if(state==='intro'){
+            const snap=Math.sin(Math.PI*T.MathUtils.smoothstep(chase.intro,.08,.48));
+            jaw.rotation.x-=.57*snap;
+            head.rotation.x-=.14*snap;
+        }
         tailBase.rotation.y=.34*Math.sin(t*4.1);tip.rotation.y=.37*Math.sin(t*4.1-.8);
         for(const {hip,ankle,s,rear} of legs){
             const swing=Math.sin(phase+(rear?2.9:0)+s*.51);

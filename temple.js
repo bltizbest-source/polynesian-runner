@@ -142,7 +142,7 @@ export function createTempleScene(canvas) {
     function build(kind){
         const g=new T.Group();
         if(kind==='gem'){
-            piece(g,gem,0xffbb3b,0,1.12,0,.58,.84,.58);
+            piece(g,gem,0xffbb3b,0,0,0,.58,.84,.58);
         }else{
             const gate=kind==='gate',y=gate?1.46:.335;
             if(gate)for(const s of [-1,1])piece(g,box,0x60442f,s*.71,.92,0,.16,1.84,.34);
@@ -172,6 +172,26 @@ export function createTempleScene(canvas) {
             2.36-.79*menu-.55*catchFocus,
             T.MathUtils.lerp(T.MathUtils.lerp(chaseDepth,3.85+narrow*.7,menu),2.05,catchFocus));
         camera.lookAt(p.x*(.16+.84*catchFocus),1.08-.47*catchFocus,-4.6+menu*3.7+5.36*catchFocus);
+        if(state==='intro'){
+            const reveal=T.MathUtils.smoothstep(chase.intro,.14,.60);
+            const follow=T.MathUtils.smoothstep(chase.intro,.5,1);
+            const muzzleZ=chase.lead;
+            camera.getWorldDirection(shotDirection);
+            shotDirection.multiplyScalar(5).add(camera.position);
+            shotPosition.set(2.15 + reveal*(1+narrow),1.05+.48*reveal,
+                muzzleZ*(1-reveal)-1.6+3.3*reveal);
+            shotTarget.set(T.MathUtils.lerp(chase.x,.35,reveal),.87,muzzleZ*(1-reveal));
+            camera.position.lerp(shotPosition,1-follow);
+            camera.lookAt(shotDirection.lerp(shotTarget,1-follow));
+        }
+        const fallShot = p.fallen + p.kneeling;
+        if(state==='playing' && fallShot>0){
+            camera.getWorldDirection(shotDirection);
+            shotDirection.multiplyScalar(5).add(camera.position);
+            const side=p.lane<0 ? 1 : -1;
+            camera.position.lerp(shotPosition.set(p.x+side*(2.35+narrow),1.75,1.65),fallShot);
+            camera.lookAt(shotDirection.lerp(shotTarget.set(p.x-.16,.50,0),fallShot));
+        }
         if(chase.hold>0 && state!=='start'){
             const closeUp=T.MathUtils.smoothstep(chase.hold,0,1.12);
             // Let the grab read in profile first, then fill the results
@@ -184,16 +204,25 @@ export function createTempleScene(canvas) {
             shotDirection.multiplyScalar(3.5).add(camera.position).lerp(shotTarget,closeUp);
             camera.lookAt(shotDirection);
         }
-        forest.position.z=distance%period;repeat.position.z=forest.position.z-period;
+        const strideDistance=state==='intro' ? chase.runIn : distance+(chase.runIn || 0);
+        forest.position.z=(32+strideDistance)%period;repeat.position.z=forest.position.z-period;
         const bite=posePursuer(state,p,t,chase);
-        const runnerPosition=poseRunner(state,distance,p,t,menu,chase.stumble,bite,chase.hold);
+        const runnerPosition=poseRunner(state,strideDistance,p,t,menu,chase.stumble,bite,chase.hold,chase.intro);
         shadow.position.set(runnerPosition.x,.018,.02+runnerPosition.z);shadow.scale.set(.37,.48,1);
         for(const [e,obj] of objects)if(!entities.includes(e)){obj.visible=false;free[e.kind].push(obj);objects.delete(e);}
         for(const e of entities){
             let obj=objects.get(e);
             if(!obj){obj=free[e.kind].pop()||build(e.kind);objects.set(e,obj);}
             obj.visible=true;obj.position.set(e.x,0,distance-e.at);
-            if(e.kind==='gem'){obj.rotation.y=t*2;obj.position.y=Math.sin(t*3+e.at)*.08;}
+            if(e.kind==='barrier'){
+                const topple=e.struckAt===undefined ? 0 : T.MathUtils.smoothstep(t-e.struckAt,0,.30);
+                obj.rotation.x=-1.55*topple;
+                obj.position.y=.18*topple;
+            }
+            if(e.kind==='gem'){
+                obj.rotation.y=t*2;
+                obj.position.y=e.height+Math.sin(t*3+e.at)*.08;
+            }
         }
         renderer.render(scene,camera);
     };

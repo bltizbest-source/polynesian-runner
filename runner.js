@@ -134,12 +134,18 @@ export function createRunner(scene) {
         [.08,.097,.104,-.013],[.146,.106,.112],[.209,.098,.105],[.252,.069,.079],[.267,.01,.012]]),skin);
     for(const side of [-1,1]){
         oval(neck,skin,side*.103,.119,.007,.022,.039,.021);
-        oval(neck,0x352623,side*.043,.14,-.104,.016,.006,.006);
+        const eye=joint(neck,side*.044,.138,-.100);
+        eye.rotation.y=-side*.33;
+        oval(eye,0xc7ac91,0,0,-.001,.020,.007,.009);
+        oval(eye,0x332620,0,0,-.008,.008,.0065,.004);
+        oval(eye,skin,0,.007,-.002,.022,.005,.010);
+        oval(neck,0x93533d,side*.113,.122,.006,.013,.024,.012);
         oval(neck,hair,side*.044,.155,-.104,.023,.005,.006).rotation.z=side*.09;
         oval(neck,band,side*.111,.094,.002,.009,.014,.009);
     }
     oval(neck,skin,0,.113,-.113,.022,.036,.027);
-    oval(neck,0x884d39,0,.069,-.112,.026,.005,.005);
+    oval(neck,0x924f40,0,.072,-.111,.029,.006,.009);
+    oval(neck,0xb47257,0,.064,-.110,.025,.006,.008);
     oval(neck,hair,0,.198,.017,.11,.10,.115);
     oval(neck,hair,0,.143,.065,.10,.082,.071);
     const knot=joint(neck,0,.259,.077);
@@ -172,36 +178,56 @@ export function createRunner(scene) {
             [-.177,.065,.088,.005],[-.132,.071,.091],[-.095,.066,.078],
             [-.057,.084,.088],[-.012,.089,.085],[.025,.074,.071],[.055,.047,.05],[.069,.009,.013]
         ]);
-        oval(arm.bend,skin,0,-.281,-.007,.04,.06,.039);
-        oval(arm.bend,skin,-s*.03,-.267,-.032,.017,.034,.019);
+        const wrist=joint(arm.bend,0,-.249);
+        oval(wrist,skin,0,-.032,0,.032,.048,.041);
+        // Relaxed fingers curl toward the palm, with staggered knuckles.
+        for(let finger=0;finger<4;finger++){
+            const length=.027-.003*Math.abs(finger-1);
+            const digit=oval(wrist,skin,-s*.006,-.061+finger*.002,
+                -.028+finger*.018,.015,length,.011);
+            digit.rotation.z=-s*.48;
+        }
+        oval(wrist,skin,-s*.024,-.033,-.030,.014,.030,.016).rotation.x=.42;
         garment(arm.bend,[[-.235,.042,.045],[-.195,.049,.053],
             [-.111,.059,.068],[-.068,.065,.069]],coir);
         garment(arm.anchor,[[-.118,.082,.10],[-.074,.102,.11],
             [-.026,.108,.108],[.021,.094,.093],[.053,.066,.065],[.067,.015,.018]],s<0?coir:mantle);
-        return {s,leg,foot,arm};
+        return {s,leg,foot,arm,wrist};
     });
     let lastTime=0,airborne=false,impact=0;
     const mix=T.MathUtils.lerp;
-    return function pose(state,distance,p,t,menu,stumble=0,bite=null,hold=0){
+    return function pose(state,distance,p,t,menu,stumble=0,bite=null,hold=0,intro=0){
         const dt=Math.min(.08,Math.max(0,t-lastTime));lastTime=t;
-        const running=state==='playing',air=T.MathUtils.smoothstep(p.y,0,.3);
+        const opening=state==='intro';
+        const glance=opening ? Math.sin(Math.PI*T.MathUtils.smoothstep(intro,0,.7)) : 0;
+        const running=state==='playing' || opening,air=T.MathUtils.smoothstep(p.y,0,.3);
         if(running && !p.y && airborne)impact=1;
         if(!running)impact=0;
         airborne=p.y>0;impact*=Math.exp(-11*dt);
         const cycle=running?distance/4.25:0,angle=cycle*2*Math.PI;
-        const c=p.crouch, travel=running?(1-c)*(1-air):0;
+        const c=p.crouch, travel=running?(1-c)*(1-air)*(opening?T.MathUtils.smoothstep(intro,0,.50):1):0;
+        const {fallen, kneeling} = p;
         const lean=p.lane*1.55-p.x, breath=Math.sin(t*2.2)*.008;
         root.position.set(p.x,p.y,stumble*.48);root.rotation.z=-lean*.105-stumble*.61;
         root.rotation.y=menu*2.48*(1-stumble)-lean*.15+stumble*.48;
-        const hipY=mix(.855+.043*Math.cos(angle*2)*travel-.086*impact,.335,c);
+        const hipY=mix(.845-.032*Math.cos(angle*2-1.05)*travel-.086*impact,.335,c);
         hips.position.set(.021*Math.sin(angle)*travel,hipY,0);
+        // Pivot at the pelvis so the shoulder lands beside the hip. The trailing
+        // leg folds under the body as the hands push it back onto one knee.
+        hips.position.y = mix(hipY, .255, fallen);
+        hips.position.y = mix(hips.position.y, .44, kneeling);
+        hips.rotation.x = -.24*fallen - .16*kneeling;
         hips.rotation.y=.1*Math.sin(angle)*travel;
         spine.rotation.set(-.08-.12*travel-.93*c-.12*air+breath,-.23*Math.sin(angle)*travel,.032*Math.sin(angle)*travel);
+        hips.rotation.z=.038*Math.cos(angle-.55)*travel + 1.48*fallen + .13*kneeling;
+        spine.rotation.y-=.45*glance+.26*fallen;
+        spine.rotation.x-=.16*fallen+.50*kneeling;
+        spine.rotation.x-=opening ? .18*Math.sin(Math.PI*intro) : 0;
         neck.rotation.x=-spine.rotation.x*.73;
-        neck.rotation.y=-spine.rotation.y*.55-lean*.12;
+        neck.rotation.y=-.55*spine.rotation.y-lean*.12-1.34*glance;
         wrap.rotation.z=.032*Math.sin(angle)*travel;
         knot.rotation.x=.08*Math.sin(angle*2)*travel;
-        for(const {s,leg,foot,arm} of limbs){
+        for(const {s,leg,foot,arm,wrist} of limbs){
             const phase=(cycle+(s>0?.5:0))%1;
             // During stance the ankle travels backward with the paving. The
             // recovery arc lifts the heel and brings the foot forward again.
@@ -219,10 +245,26 @@ export function createRunner(scene) {
             const upper=Math.atan2(-targetZ,down)+Math.atan2(calf*Math.sin(knee),thigh+calf*Math.cos(knee));
             leg.anchor.rotation.set(upper,0,s*.095*c);
             leg.bend.rotation.x=-knee;
-            foot.rotation.x=knee-upper+.44*Math.sin(swing*Math.PI*2)*travel;
+            // The heel touches first, then lifts as the weight rolls onto the toes.
+            const footPitch=phase<stance
+                ? mix(.16,-.38,T.MathUtils.smoothstep(phase,0,stance))
+                : mix(-.38,.16,T.MathUtils.smoothstep(swing,0,.72));
+            foot.rotation.x=knee-upper+footPitch*travel;
             const counter=Math.cos(phase*2*Math.PI)*travel;
             arm.anchor.rotation.set(-.28-.82*counter+s*.46*air-.23*c,0,s*(.12+.27*c+.13*air));
             arm.bend.rotation.x=.62+.66*travel-.25*counter+.32*air;
+            wrist.rotation.x=.14*Math.sin(phase*2*Math.PI-.55)*travel;
+            // Tuck the lower arm at impact; plant the near foot and unfold the
+            // other leg from the ground before blending back into the run.
+            leg.anchor.rotation.x = mix(leg.anchor.rotation.x, s>0 ? .60 : .15, fallen);
+            leg.bend.rotation.x = mix(leg.bend.rotation.x, s>0 ? -.92 : -.38, fallen);
+            leg.anchor.rotation.x = mix(leg.anchor.rotation.x, s>0 ? 1.38 : -.24, kneeling);
+            leg.bend.rotation.x = mix(leg.bend.rotation.x, s>0 ? -1.54 : -1.40, kneeling);
+            foot.rotation.x = mix(foot.rotation.x, s>0 ? .16 : .95, kneeling);
+            arm.anchor.rotation.x = mix(arm.anchor.rotation.x, .95, fallen + kneeling);
+            arm.anchor.rotation.z = mix(arm.anchor.rotation.z, s*.23, fallen + kneeling);
+            arm.bend.rotation.x = mix(arm.bend.rotation.x, 1.42, fallen);
+            arm.bend.rotation.x = mix(arm.bend.rotation.x, .35, kneeling);
             if(bite){
                 const lift=T.MathUtils.smoothstep(hold,.18,.86);
                 arm.anchor.rotation.z+=s*lift*(.51+.14*Math.sin(t*8+s));
