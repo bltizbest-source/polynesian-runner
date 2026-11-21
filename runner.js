@@ -267,6 +267,12 @@ export function createRunner(scene) {
             arm.anchor.rotation.z = mix(arm.anchor.rotation.z, s*.23, fallen + kneeling);
             arm.bend.rotation.x = mix(arm.bend.rotation.x, 1.42, fallen);
             arm.bend.rotation.x = mix(arm.bend.rotation.x, .35, kneeling);
+            if(p.riding){
+                arm.anchor.rotation.set(3.04,0,s*.12);
+                arm.bend.rotation.x=.22;
+                leg.anchor.rotation.x=.22+s*.13;
+                leg.bend.rotation.x=-.68;
+            }
             if(bite){
                 const lift=T.MathUtils.smoothstep(hold,.18,.86);
                 arm.anchor.rotation.z+=s*lift*(.51+.14*Math.sin(t*8+s));

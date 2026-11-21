@@ -1,3 +1,4 @@
+import {courses,trackPoint,routePoint,cableHeight} from './courses.js';
 import {renderPixelRatio} from './viewport.js';
 import {caveFaces,tripStoneAt} from './cave.js';
 // World units are metres. The camera looks along +z, with the runner at z = 8.
@@ -30,8 +31,20 @@ export function createScene(canvas, laneWidth) {
         colors.forEach(([n,c])=>g.addColorStop(n,c));
         return g;
     }
+    let course, origin, cameraAt, runnerDepth;
+    const sections=new Map();
     function project(x,y,z) {
-        return [center+x*focal/z, horizon+(2.9-y)*focal/z];
+        let row=sections.get(z);
+        if(!row){
+            const pt=routePoint(course,cameraAt+z-runnerDepth);
+            const dx=pt.x-origin.x,dz=pt.z-origin.z;
+            const cs=Math.cos(origin.heading),sn=Math.sin(origin.heading);
+            row={x:cs*dx+sn*dz,depth:runnerDepth+sn*dx-cs*dz,
+                right:Math.cos(pt.heading-origin.heading),slant:Math.sin(origin.heading-pt.heading)};
+            sections.set(z,row);
+        }
+        const scale=focal/Math.max(.35,row.depth+x*row.slant);
+        return [center+(row.x+x*row.right)*scale,horizon+(2.9-y)*scale];
     }
     function face(color,...points) { polygon(color,points.map(p=>project(...p))); }
     function island(x,y,size,colors) {
@@ -56,7 +69,10 @@ export function createScene(canvas, laneWidth) {
         ctx.restore();
     }
     function landscape(t) {
-        ctx.fillStyle=gradient(0,horizon,[[0,'#364864'],[.44,'#bd8292'],[.77,'#ffae81'],[1,'#ffdb9b']]);
+        const [lagoon,lava,fern,cliffs,plains,falls]=courses.map(c=>course===c);
+        const sky=(lagoon || cliffs)?['#477c99','#8ebfc4','#f3c69d','#ffdfa7']:
+            lava?['#364864','#bd8292','#ffae81','#ffdb9b']:['#425f6b','#839f9c','#b7cbbb','#d2d9c2'];
+        ctx.fillStyle=gradient(0,horizon,[[0,sky[0]],[.44,sky[1]],[.77,sky[2]],[1,sky[3]]]);
         ctx.fillRect(0,0,w,horizon+1);
         const sunX=center+w*.105, sunY=horizon-h*.17,r=h*.095;
         const halo=ctx.createRadialGradient(sunX,sunY,r*.6,sunX,sunY,r*2.4);
@@ -70,9 +86,9 @@ export function createScene(canvas, laneWidth) {
         island(center-w*.48,horizon,w*.32,['#70677a','#896e7e','#78677b']);
         island(center+w*.44,horizon,w*.23,['#827283','#a17c87','#917586']);
         island(center,horizon,Math.min(w*.34,h*.46),['#445566','#536074','#705e71','#384f5b','#635d70']);
-        ctx.fillStyle=gradient(horizon,h,[[0,'#91c1ad'],[.14,'#539c98'],[.62,'#236c75'],[1,'#184251']]);
+        ctx.fillStyle=gradient(horizon,h,[[0,'#'+course.fog.toString(16)],[.3,'#'+course.water.toString(16)],[1,'#182e32']]);
         ctx.fillRect(0,horizon,w,h-horizon);
-        for(let i=0;i<170;i++){
+        for(let i=0;(lagoon || cliffs) && i<170;i++){
             const depth=((i*.61803+t*.019)%1)**2;
             const x=((i*.38291)%1)*w,y=horizon+depth*(h-horizon);
             ellipse(Math.abs(x-sunX)<r*(.4+depth)?'#f9d39699':'#c3e0c54d',x,y,w*(.002+depth*.019),.5+depth*h*.0017);
@@ -81,8 +97,39 @@ export function createScene(canvas, laneWidth) {
             const x=center+side*w*offset,y=horizon+h*depth,s=h*(depth+.012);
             ellipse('#b5c4a2',x,y,s*2.1,s*.09);
             island(x,y,s*2,['#37585a','#406361','#547066']);
-            palm(x+s*.26,y-s*.37,s*1.5,side);
-            palm(x-s*.42,y-s*.24,s*1.04,-side);
+            if(lava){
+                island(x,y,s*3.7,['#66525b','#503d47','#80594f']);
+                polygon('#e38956',[[x-.08*s,y-.94*s],[x-.22*s,y-.58*s],[x-.06*s,y-.54*s],[x+.24*s,y-.12*s],[x-.14*s,y-.51*s],[x-.29*s,y-.55*s]]);
+            }else if(cliffs){
+                island(x,y,s*3,['#847c71','#968d79','#736d67']);
+                for(let k=-2;k<=2;k++){
+                    const surge=.9+.35*Math.sin(t*2+offset*25);
+                    ellipse(k%2?'#e0eeea':'#a5d1d4',x+s*(.42+k*.09),y-s*surge*.43,s*.085,s*surge*(.59-.09*Math.abs(k)));
+                }
+            }else if(plains){
+                island(x,y,s*3.4,['#7b8047','#939255','#a3995c']);
+                for(let k=-3;k<4;k++){
+                    const gx=x+k*s*.19;
+                    polygon('#c1a45c',[[gx,y],[gx-s*.09,y-s*.29],[gx+s*.02,y-s*.14],[gx+s*.08,y-s*.34],[gx+s*.05,y]]);
+                }
+            }else if(falls){
+                island(x,y,s*4,['#35584f','#466a5c','#537760']);
+                polygon('#a7d5d0',[[x-s*.50,y-s*1.65],[x-s*.27,y-s*1.64],[x-s*.28,y],[x-s*.60,y]]);
+                ellipse('#dfebe0',x-s*.45,y,s*.31,s*.06);
+            }else if(fern){
+                for(let k=-3;k<=3;k++){
+                    const fx=x+k*s*.26, fy=y-s*.14, crown=fy-s*(.55+.14*Math.cos(k));
+                    polygon('#514738',[[fx-s*.037,fy],[fx+s*.043,fy],[fx+s*.032,crown],[fx-s*.025,crown]]);
+                    for(const side of [-1,1])for(let j=0;j<3;j++){
+                        const reach=(.27+j*.10)*s*side;
+                        polygon(j%2?'#476f58':'#345f52',[[fx,crown],[fx+reach*.6,crown-s*(.23-j*.06)],
+                            [fx+reach,crown+s*(j*.11-.09)],[fx+reach*.5,crown-s*.03]]);
+                    }
+                }
+            }else{
+                palm(x+s*.26,y-s*.37,s*1.5,side);
+                palm(x-s*.42,y-s*.24,s*1.04,-side);
+            }
         }
     }
     function box(x,y,z,rx,height,rz,colors) {
@@ -103,12 +150,14 @@ export function createScene(canvas, laneWidth) {
         polygon('#ffe79b',[[px-s*.07,py],[px,py-s*.3],[px+s*.07,py]]);
     }
     function road(distance) {
-        const stone=['#a88672','#b7957a','#ad907c','#bc9980'];
+        const next=courses[(courses.indexOf(course)+1)%courses.length];
+        const palettes=[course,next].map(c=>c.stone.map(color=>'#'+color.toString(16)));
         const edge=2.45;
-        face('#8b7266',[-edge,0,200],[edge,0,200],[edge,0,.8],[-edge,0,.8]);
+
         for(let i=75;i>=0;i--){
             const z=1+i*2-distance%2,n=Math.max(.8,z),f=z+1.98;
             if(f<=n)continue;
+            const stone=palettes[Number(cameraAt+n-runnerDepth>=course.length)];
             const row=i+Math.floor(distance/2);
             const seam=(row%3-1)*.85;
             face(stone[row%4],[-edge,0,f],[seam,0,f],[seam-.2,0,n],[-edge,0,n]);
@@ -133,6 +182,10 @@ export function createScene(canvas, laneWidth) {
     }
     function obstacle(e,z,t) {
         const wood=['#884735','#582f32','#c88555'];
+        if(e.kind==='hurdle'){
+            box(0,.02,z,2.45,.53,.23,wood);
+            box(-1.05,.41,z,.12,.27,.12,wood);return;
+        }
         if(e.kind==='barrier' && e.struckAt!==undefined){
             const fall=Math.min(1,(t-e.struckAt)/.30);
             box(e.x,0,z,.76,.67-.48*fall,.25+.22*fall,wood);
@@ -150,6 +203,8 @@ export function createScene(canvas, laneWidth) {
     }
     const athlete=new Image();
     athlete.src='assets/runner-poses.webp';
+    const rider=new Image();
+    rider.src='assets/runner-zip.webp';
     const ridgeback=new Image();
     ridgeback.src='assets/ridgeback-poses.webp';
     const capture=new Image();
@@ -187,6 +242,10 @@ export function createScene(canvas, laneWidth) {
     function runner(player,distance,active,stumble,z) {
         const scale=focal/z, [x,ground]=project(player.x,0,z);
         ellipse('#3e40474d',x,ground,scale*.37,scale*.10);
+        if(player.riding && rider.naturalWidth){
+            ctx.drawImage(rider,x-.8*scale,ground-(player.y+2.13)*scale,1.6*scale,2.24*scale);
+            return;
+        }
         if(!athlete.naturalWidth)return;
         const phase=Math.floor(distance/4.25*8)%8;
         let frame=phase,row=0;
@@ -201,7 +260,7 @@ export function createScene(canvas, laneWidth) {
         ctx.drawImage(athlete,frame*160,row*224,160,224,-.75*scale,-1.92*scale,1.5*scale,2.1*scale);
         ctx.restore();
     }
-    return function draw(state, distance, player, entities, time, menuBlend, chase) {
+    return function draw(state, distance, player, entities, time, menuBlend, chase,selectedCourse) {
         const width=canvas.clientWidth, height=canvas.clientHeight;
         if(!width || !height)return;
         const ratio=renderPixelRatio(width,height);
@@ -210,14 +269,15 @@ export function createScene(canvas, laneWidth) {
         center=w*(.5+menuBlend*(portrait?.12:.19));
         horizon=h*((portrait?.45:.43)-menuBlend*(portrait?.22:0));
         focal=Math.min(h*(portrait?.98:1.18),w*1.65);
-        const strideDistance=state==='intro' ? chase.runIn : distance+(chase.runIn || 0);
+        const strideDistance=state==='intro' ? chase.runIn : chase.completedDistance+distance+(chase.runIn || 0);
         const opening=state==='intro';
         const focus=opening ? Math.min(1,Math.max(0,(chase.intro-3.30)/.63),Math.max(0,(7.45-chase.intro)/1.8)) : 0;
         const pullback=focus*1.8;
         const roadDistance=32+strideDistance-pullback;
-        landscape(time);road(roadDistance);
+        course=selectedCourse;origin=trackPoint(course,distance);cameraAt=distance;runnerDepth=8+pullback;
+        sections.clear();landscape(time);road(roadDistance);
         const items=[];
-        if(opening || (state==='playing' && distance<20)){
+        if(course===courses[0] && !chase.completedDistance && (opening || (state==='playing' && distance<20))){
             const origin=8+pullback-strideDistance;
             for(const face of caveFaces){
                 const z=origin+face.vertices.reduce((sum,v)=>sum+v[2],0)/3;
@@ -232,6 +292,32 @@ export function createScene(canvas, laneWidth) {
         for(let i=0;i<13;i++){
             const z=4+i*11-roadDistance%11;
             if(z>2)items.push({z,draw:()=>{torch(-2.69,z,time);torch(2.69,z,time);}});
+        }
+        const cable=course.cable, cx=cable.lane*laneWidth;
+        const trackZ=d=>runnerDepth+d-distance;
+        for(let d=cable.at;d<cable.end;d++){
+            const z=trackZ(d), y=cableHeight(cable,d)+.4, nextY=cableHeight(cable,d+1)+.4;
+            if(z>1.5)items.push({z,draw:()=>face('#5f4636',[cx-.06,y,z],[cx+.06,y,z],[cx+.06,nextY,z+1],[cx-.06,nextY,z+1])});
+        }
+        for(const d of [cable.at,cable.end]){
+            const z=trackZ(d), post=cx<0?-2.66:2.66,y=cableHeight(cable,d)+.4;
+            if(z>1.5)items.push({z,draw:()=>{
+                const wood=['#805335','#68432d','#b28b58'];
+                box(post,0,z,.14,y,.14,wood);box((cx+post)/2,y,z,Math.abs(cx-post)/2+.08,.18,.12,wood);
+            }});
+        }
+        const gripAt=player.riding?distance:cable.at, gripZ=trackZ(gripAt);
+        if(player.riding || distance<cable.at+1)items.push({z:gripZ-.01,draw:()=>{
+            const y=cableHeight(cable,gripAt), gold=['#dba852','#a07739','#ffe1a1'];
+            box(cx,y,gripZ,.35,.09,.07,gold);box(cx,y,gripZ,.035,.4,.04,gold);
+        }});
+        for(const gateAt of (chase.completedDistance && distance<10?[0,course.length]:[course.length])){
+            const finishZ=trackZ(gateAt);
+            if(finishZ>1.5)items.push({z:finishZ,draw:()=>{
+                const trim=['#dfa651','#ac7d44','#ffe2a3'];
+                for(const x of [-2.75,2.75])box(x,0,finishZ,.12,3.55,.12,trim);
+                box(0,3.4,finishZ,2.85,.30,.12,trim);
+            }});
         }
         for(const e of entities){
             const z=e.at-distance+8+pullback;

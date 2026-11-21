@@ -1,3 +1,4 @@
+import {courses,courseItems,cableHeight} from './courses.js';
 import {tripStoneAt} from './cave.js';
 import {createScene} from './scene.js';
 import {createTempleScene} from './temple.js';
@@ -16,8 +17,8 @@ let best = 0;
 try { best = Math.max(0, Number(localStorage.getItem(storageKey)) || 0); } catch {}
 el('best').textContent = best;
 
-let state = 'start', distance = 0, score = 0, obstacleCount = 0;
-let entities = [], nextObstacle = 0, time = 0, menuBlend = 1;
+let state = 'start', distance = 0, score = 0, level = 0;
+let entities=[], upcoming=[], startingLevel=0, time=0, menuBlend=1;
 const laneWidth = 1.55;
 const player = { x: 0, lane: 0, y: 0, velocity: 0, jumps: 0, duck: false, crouch: 0, fallen: 0, kneeling: 0 };
 const startingLead = 5, hitPenalty = 10;
@@ -25,7 +26,7 @@ const cleanMetresPerLeadMetre = 16, recoverySeconds = 1.85;
 
 // The sleeping ridgeback is just inside the entrance, beside the path.
 const denAt = 2.4;
-const chase = {lead:startingLead, x:1.06, stride:0, stumble:0, hold:0};
+const chase = {lead:startingLead, x:1.06, stride:0, stumble:0, hold:0, completedDistance:0};
 const gestures = new Map();
 const tripTime = 2.8, flightTime = 5.65, introDuration = flightTime + 2;
 const introLength = tripStoneAt + .35 + 8;
@@ -33,25 +34,17 @@ const introLength = tripStoneAt + .35 + 8;
 let slideTime = 0;
 let duckKey = false;
 
-function fillCourse() {
-    while (nextObstacle < distance + 145) {
-        const lane = obstacleCount === 0 ? 0 : Math.floor(Math.random()*3)-1;
-        const kind = obstacleCount % 2 ? 'gate' : 'barrier';
-        const x = lane * laneWidth;
-        for (const offset of [-12, -8, -5]) {
-            entities.push({kind:'gem', at:nextObstacle + offset, x, height:1.12, move:'run'});
-        }
-        const move = kind === 'gate' ? 'duck' : 'jump';
-        const height = move === 'duck' ? .55 : 1.85;
-        entities.push({kind:'gem', at:nextObstacle - 1.8, x, height, move});
-        entities.push({kind, at:nextObstacle, x});
-        entities.push({kind:'gem', at:nextObstacle + 1.8, x, height, move});
-        obstacleCount++;
-        nextObstacle += 18 + Math.random()*9 + Math.min(distance/190, 6);
-    }
+const picker=el('level-select');
+for(const [i,course] of courses.entries())picker.add(new Option((i+1)+' · '+course.island+' — '+course.name,i));
+function selectLevel(index){
+    level=index;picker.value=String(index);
+    const course=courses[level], next=courses[(level+1)%courses.length];
+    entities=courseItems(course);
+    upcoming=courseItems(next).map(item=>({...item,at:item.at+course.length}));
+    el('course-name').textContent=courses[level].island+' · '+courses[level].name;
 }
-nextObstacle = 24;
-fillCourse();
+selectLevel(0);
+picker.addEventListener('change',()=>selectLevel(Number(picker.value)));
 
 function clearInput() {
     duckKey = false;
@@ -61,21 +54,24 @@ function clearInput() {
 }
 function start() {
     if (state !== 'start' && state !== 'over') return;
-    state = 'intro';
+    if(state==='start')startingLevel=level;
+    selectLevel(startingLevel);
+    state = level===0 ? 'intro' : 'playing';
     lastFrame = undefined;
     document.body.dataset.state = state;
-    distance = score = obstacleCount = 0;
-    entities = [];
-    nextObstacle = 24;
-    fillCourse();
+    distance=score=0;
+    player.riding=false;
     clearInput();
     Object.assign(player, {x:0, lane:0, y:0, velocity:0, jumps:0, crouch:0, fallen:0, kneeling:0});
-    Object.assign(chase, {lead:-denAt, x:1.5, stride:0, stumble:0, hold:0, intro:0, wake:0, stone:0, runIn:0, hitTime:0});
+    Object.assign(chase, {lead:-denAt, x:1.5, stride:0, stumble:0, hold:0, intro:0, wake:0, stone:0, runIn:0, hitTime:0, completedDistance:0});
     el('menu').hidden = true;
     el('live').hidden = el('lead-hud').hidden = state === 'intro';
     el('lead').textContent = startingLead + ' m';
-    el('skip').hidden = false;
-    el('skip').focus({preventScroll:true});
+    el('level-choice').hidden=true;
+    el('route-hud').hidden=state==='intro';
+    el('skip').hidden = state!=='intro';
+    if(state==='playing')chase.lead=startingLead;
+    if(state==='intro')el('skip').focus({preventScroll:true});
     el('hit').hidden = true;
     el('score').textContent = 0;
 }
@@ -83,6 +79,7 @@ function finishIntro() {
     if (state !== 'intro') return;
     state = 'playing';
     document.body.dataset.state = state;
+    el('route-hud').hidden=false;
     chase.lead = startingLead;
     chase.runIn = introLength;
     chase.stride = introLength - denAt - startingLead;
@@ -93,6 +90,8 @@ function finishIntro() {
 }
 el('skip').addEventListener('click', finishIntro);
 function end() {
+    player.riding=false;
+    el('route-hud').hidden=true;
     state = 'over';
     document.body.dataset.state = state;
     clearInput();
@@ -105,7 +104,7 @@ function end() {
     el('live').hidden = true;
     el('lead-hud').hidden = true;
     el('title').textContent = 'Caught!';
-    el('description').textContent = 'Score ' + score + '  ·  Distance ' + Math.floor(distance) + ' m';
+    el('description').textContent = 'Score ' + score + '  ·  Distance ' + Math.floor(chase.completedDistance+distance) + ' m';
     el('start-label').textContent = 'Run again';
     el('home').hidden = false;
     el('menu').hidden = false;
@@ -119,7 +118,7 @@ function duckRequested() {
     return false;
 }
 function jump() {
-    if (chase.hitTime > 0) return;
+    if (chase.hitTime > 0 || player.riding) return;
     if ((player.y > 0 || !duckRequested()) && player.jumps < 2) {
         player.velocity = 6.2;
         player.jumps++;
@@ -130,24 +129,23 @@ el('help').addEventListener('click', () => el('guide').showModal());
 el('home').addEventListener('click', () => {
     state = 'start';
     document.body.dataset.state = state;
-    distance = obstacleCount = 0;
-    entities = [];
-    nextObstacle = 24;
-    fillCourse();
+    distance=chase.completedDistance=0;
+    selectLevel(level);
+    el('level-choice').hidden=false;
     Object.assign(player, {x:0, lane:0, y:0, crouch:0, fallen:0, kneeling:0});
     chase.stumble = chase.runIn = chase.hold = 0;
     el('title').innerHTML = 'Temple<br><em>Passage</em>';
-    el('description').textContent = 'Chase the gold through ancient gates on an endless jungle run.';
+    el('description').textContent = 'Follow the bends, leap fallen logs and ride ziplines across six islands.';
     el('start-label').textContent = 'Start run';
     el('home').hidden = true;
     el('start').focus();
 });
 function changeLane(direction) {
-    if (chase.hitTime > 0) return;
+    if (chase.hitTime > 0 || player.riding) return;
     player.lane = Math.max(-1, Math.min(1, player.lane + direction));
 }
 document.addEventListener('keydown', e => {
-    if (el('guide').open || (e.code === 'Space' && e.target.closest('button'))) return;
+    if (e.target===picker || el('guide').open || (e.code === 'Space' && e.target.closest('button'))) return;
     if (!['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) return;
     e.preventDefault();
     if (e.repeat) return;
@@ -201,7 +199,14 @@ function advance(dt) {
     player.fallen = fall * (1 - pushUp);
     player.kneeling = pushUp * (1 - stand);
     // Slide briefly on impact, stop on the ground, then accelerate off one knee.
-    const speed = (8 + Math.min(distance / 160, 6)) * (1 - fall + stand);
+    const course=courses[level], cable=course.cable;
+    let pace=8+course.speed+distance/160;
+    if(chase.completedDistance && distance<16){
+        const previous=courses[(level+courses.length-1)%courses.length];
+        const entryPace=8+previous.speed+previous.length/160;
+        pace=entryPace+(pace-entryPace)*easePhase(distance,0,16);
+    }
+    const speed = pace * (1 - fall + stand) * (player.riding?1.18:1);
     const previousMetres = Math.floor(distance);
     distance += dt * speed;
     score += Math.floor(distance) - previousMetres;
@@ -228,15 +233,23 @@ function advance(dt) {
     player.crouch += ((player.duck ? 1 : 0) - player.crouch) * (1 - Math.exp(-23*dt));
     const dx = player.lane*laneWidth - player.x;
     player.x += Math.sign(dx) * Math.min(Math.abs(dx), 9*dt);
-    fillCourse();
+    if(!player.riding && chase.hitTime===0 && Math.abs(distance-cable.at)<.65 &&
+        Math.abs(player.x-cable.lane*laneWidth)<.50 && player.y>.48){
+        player.riding=true;player.lane=cable.lane;player.x=cable.lane*laneWidth;
+    }
+    if(player.riding){
+        player.y=cableHeight(cable,distance)-1.9;
+        player.velocity=0;
+        if(distance>=cable.end){player.riding=false;player.jumps=2;}
+    }
     for (const e of entities) {
         if (e.done) continue;
         const gap = e.at - distance;
         const lateralGap = Math.abs(player.x-e.x);
-        if (Math.abs(gap) < .36 && lateralGap < (e.kind === 'gem' ? .48 : .94)) {
+        if (Math.abs(gap) < .36 && (e.kind==='hurdle' || lateralGap < (e.kind === 'gem' ? .48 : .94))) {
             if (e.kind === 'gem') {
                 if (chase.hitTime > 0) continue;
-                const matchedMove = (e.move === 'jump' && player.y >= .65)
+                const matchedMove = (e.move==='ride' && player.riding) || (e.move === 'jump' && player.y >= .65)
                     || (e.move === 'duck' && player.duck)
                     || (e.move === 'run' && player.y < .55 && !player.duck);
                 if (matchedMove) {score += 10; e.done = true;}
@@ -255,6 +268,12 @@ function advance(dt) {
             }
         }
         if (gap < -.36 && e.kind !== 'gem') { score++; e.done = true; }
+    }
+    if(distance>=course.length){
+        distance-=course.length;
+        chase.completedDistance+=course.length;
+        selectLevel((level+1)%courses.length);
+        return;
     }
     entities = entities.filter(e => e.kind === 'gem' ? !e.done && e.at >= distance-.36 : e.at > distance-7);
 }
@@ -294,6 +313,13 @@ function frame(now) {
         for(let i=0;i<steps && state==='playing';i++) advance(dt/steps);
     } else if(state==='catching') advanceCapture(dt);
     if(state==='playing'||state==='catching'){
+        const c=courses[level], ahead=c.cable.at-distance;
+        const next=courses[(level+1)%courses.length];
+        const jumpAhead=c.jumps.some(at=>at>distance && at-distance<13);
+        el('route-hud').textContent=player.riding?'Riding zipline':ahead>0 && ahead<17
+            ? 'Zipline · '+['left','centre','right'][c.cable.lane+1]+' lane · jump'
+            :jumpAhead?'Fallen log · jump':distance<16?'Level '+(level+1)+' · '+c.island+' · '+c.name
+            :c.length-distance<10?'Ahead · '+next.island+' · '+next.name:c.name+' · '+Math.ceil(c.length-distance)+' m to arch';
         el('score').textContent = score;
         const metres = chase.lead > 0 ? Math.max(1,Math.round(chase.lead)) : 0;
         el('lead').textContent = metres+' m';
@@ -301,7 +327,8 @@ function frame(now) {
     const menuVisible=state==='start'||state==='over';
     menuBlend += ((menuVisible?1:0)-menuBlend)*(1-Math.exp(-5*dt));
     const courseDistance = state === 'intro' ? chase.runIn - introLength : distance;
-    draw(state, courseDistance, player, entities, time, menuBlend, chase);
+    const visibleItems=distance>courses[level].length-58 ? entities.concat(upcoming.filter(e=>e.at-distance<65)) : entities;
+    draw(state, courseDistance, player, visibleItems, time, menuBlend, chase, courses[level]);
     requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);

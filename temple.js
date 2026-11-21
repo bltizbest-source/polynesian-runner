@@ -1,10 +1,11 @@
+import {courses,trackPoint,routePoint,cableHeight} from './courses.js';
 import {renderPixelRatio} from './viewport.js';
 import * as T from './vendor/three.module.min.js';
 import {caveFaces,tripStoneAt} from './cave.js';
 import {createRunner} from './runner.js';
 import {createPursuer} from './pursuer.js';
 
-// Static scenery is batched by shape. One repeating section carries the whole forest.
+// Each course is built once. Its static scenery shares instanced geometry.
 export function createTempleScene(canvas) {
     const renderer = new T.WebGLRenderer({canvas, antialias:true, powerPreference:'high-performance'});
     renderer.shadowMap.enabled=true;
@@ -32,6 +33,12 @@ export function createTempleScene(canvas) {
     const box=new T.BoxGeometry(), rock=new T.DodecahedronGeometry(.5), gem=new T.OctahedronGeometry(.5);
     const pole=new T.CylinderGeometry(.46,.52,1,7), cone=new T.ConeGeometry(.5,1,7);
     const mat=new T.MeshStandardMaterial({flatShading:true,roughness:.95});
+    const spray=rock.clone(), foam=mat.clone(), sprayTime={value:0};
+    foam.onBeforeCompile=shader=>{
+        shader.uniforms.sprayTime=sprayTime;
+        shader.vertexShader='uniform float sprayTime;\n'+shader.vertexShader.replace('#include <begin_vertex>',
+            '#include <begin_vertex>\nfloat surge = smoothstep(-0.25, 0.9, sin(sprayTime * 2.0 + instanceMatrix[3].z * 0.16));\ntransformed.y = (transformed.y + 0.5) * (0.16 + 0.84 * surge) - 0.5;');
+    };
     // A ridged, tapering leaf catches light on both sides of its midrib.
     const leaf=new T.BufferGeometry();
     leaf.setAttribute('position',new T.Float32BufferAttribute([
@@ -39,93 +46,133 @@ export function createTempleScene(canvas) {
         -.47,.18,.44,0,-.13,1,0,.32,.48, 0,.32,.48,0,-.13,1,.47,.18,.44
     ],3));leaf.computeVertexNormals();
     const leaves=mat.clone();leaves.side=T.DoubleSide;
-    const forest=new T.Group();scene.add(forest);
-    const batches=new Map(), temp=new T.Object3D();
-    function put(shape,color,x,y,z,sx,sy,sz,rx=0,ry=0,rz=0) {
-        temp.position.set(x,y,z);temp.scale.set(sx,sy,sz);temp.rotation.set(rx,ry,rz,'YXZ');temp.updateMatrix();
-        if(!batches.has(shape))batches.set(shape,[]);
-        batches.get(shape).push([temp.matrix.clone(),new T.Color(color)]);
-    }
-    let seed=8925;
-    function random(){seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;}
-    const basalt=[0x536359,0x77806b,0x667565,0x899078], paving=[0x908c72,0xa29d80,0x7c8370,0x98967e];
-    const green=[0x346748,0x4f8050,0x628d4d,0x235c49,0x7b9c4d];
-    const pick=colors=>colors[Math.floor(random()*colors.length)];
-    function palm(x,z,height) {
-        const tilt=(random()-.5)*.22;
-        put(pole,0x695b40,x,height*.46-.7,z,.43,height,.43,0,0,tilt);
-        for(let i=0;i<10;i++){
-            put(leaf,pick(green),x-height*.48*Math.sin(tilt),height*.96-.7,z,1.15+random(),2,2.2+random()*2,(random()-.45)*.58,i*.628+tilt);
+    function buildLandscape(course) {
+        const forest=new T.Group();scene.add(forest);
+        const approach=new T.Group();forest.add(approach);
+        forest.userData.approach=approach;
+        const entranceBatches=new Map(), courseBatches=new Map(), temp=new T.Object3D();
+        let batches=entranceBatches;
+        function put(shape,color,x,y,z,sx,sy,sz,rx=0,ry=0,rz=0) {
+            const at=trackPoint(course,-z,x);
+            temp.position.set(at.x,y,at.z);temp.scale.set(sx,sy,sz);temp.rotation.set(rx,ry-at.heading,rz,'YXZ');temp.updateMatrix();
+            if(!batches.has(shape))batches.set(shape,[]);
+            batches.get(shape).push([temp.matrix.clone(),new T.Color(color)]);
         }
-    }
-    function shrine(x,z,side) {
-        // Stepped stone guardian, recessed eyes, projecting brow, nose and jaw.
-        const stones=0x78816c, trim=0xb3a379;
-        put(box,0x596956,x,.28,z,2.35,.66,2.15);
-        put(box,stones,x,1.65,z,1.72,2.25,1.53);
-        put(box,0x697661,x,3.15,z,1.94,1.14,1.72);
-        put(box,stones,x,4.11,z,1.86,1.12,1.61);
-        put(box,0x85926c,x,4.83,z,2.12,.32,1.94);
-        put(box,0x507242,x,5.03,z,1.94,.16,1.8);
-        for(const s of [-1,1]){
-            put(box,0x354c41,x+s*.5,3.73,z+.85,.75,.27,.16);
-            put(box,trim,x+s*.48,3.99,z+.89,.94,.28,.28,0,0,s*.19);
-            put(box,0x999578,x+s*.67,3.23,z+.88,.34,.64,.21,0,0,-s*.22);
-        }
-        put(box,trim,x,3.52,z+.98,.32,.71,.36);
-        put(box,0x3e5144,x,2.97,z+.83,.76,.17,.16);
-        for(let i=0;i<4;i++)put(box,i%2?stones:trim,x,1.03+i*.35,z+.785,.78-i*.1,.12,.11,0,0,side*.35);
-    }
-    const period=96;
-    for(let j=0;j<period;j++){
-        const z=12-j;
-        for(let lane=-1;lane<=1;lane++){
-            put(box,pick(paving),lane*1.58,-.19+random()*.012,z,1.555,.38,.975);
-            if(random()<.27)put(box,0x728160,lane*1.58+(random()-.5)*1.2,.01,z-.43,.1+random()*.38,.013,.09);
-        }
-        for(const s of [-1,1]){
-            const x=s*2.55;
-            put(box,pick(basalt),x,-.16,z,.37,.47,.97);
-            if(j%4===0){
-                put(rock,0x637b53,s*(8.3+random()*2),-1.3,z,8,2.6,7.2);
-                put(box,0xa6bc98,s*(3.9+random()*1.3),-.894,z,.8+random(),.01,.045);
-                put(rock,pick(basalt),s*(4+random()*5),-.58,z,2+random()*2,1.6,2.3);
-                const fx=s*(3.1+random()*1.5);
-                for(let k=0;k<8;k++)put(leaf,pick(green),fx,-.32,z,.46,.9,1.34,-.48,k*.786);
-            }
-            if(j%5===0)palm(s*(5.1+random()*4.5),z,4.1+random()*4);
-            if(j%7===0){
-                const tx=s*(10+random()*10), ht=5+random()*7;
-                put(pole,0x4f523c,tx,ht*.47-.9,z,1.1,ht,1);
-                put(rock,pick(green),tx,ht-.6,z,6,4,6);
-            }
-            if(j%12===6){
-                put(pole,0x534d39,x,.72,z,.18,1.6,.18);
-                put(pole,0xbc965b,x,1.44,z,.35,.25,.35);
-                put(gem,0xff9936,x,1.85,z,.32,.84,.32);
-                put(cone,0xffdb73,x,1.89,z+.08,.19,.55,.19);
+        let seed=8925;
+        function random(){seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;}
+        const basalt=[0x536359,0x77806b,0x667565,0x899078], paving=course.stone;
+        const green=[0x346748,0x4f8050,0x628d4d,0x235c49,0x7b9c4d];
+        const pick=colors=>colors[Math.floor(random()*colors.length)];
+        function palm(x,z,height) {
+            const tilt=(random()-.5)*.22;
+            put(pole,0x695b40,x,height*.46-.7,z,.43,height,.43,0,0,tilt);
+            for(let i=0;i<10;i++){
+                put(leaf,pick(green),x-height*.48*Math.sin(tilt),height*.96-.7,z,1.15+random(),2,2.2+random()*2,(random()-.45)*.58,i*.628+tilt);
             }
         }
-        if(j%32===25){
-            for(const s of [-1,1])shrine(3.42*s,z,s);
-            put(box,0x687663,0,5.31,z,8.78,.48,1.88);
-            put(box,0xaa9b76,0,5.6,z,9.08,.17,1.99);
-            put(box,0x647d50,0,5.79,z,8.62,.23,1.84);
-            for(let i=-5;i<=5;i++)put(box,0xc0a474,i*.62,5.33,z+.957,.22,.22,.06,0,0,.785);
-            for(let v=0;v<10;v++){
-                const x=(random()-.5)*8,len=.3+random()*1.15;
-                put(pole,0x517249,x,5.75-len/2,z+.99,.065,len,.065);
-                put(leaf,pick(green),x,5.8-len,z+.99,.24,.35,.44,.78,v);
+        const [lagoon,lava,fern,cliffs,plains,falls]=courses.map(c=>c===course);
+        for(let j=-36;j<course.length;j++){
+            if(j===0)batches=courseBatches;
+            const z=-j;
+            for(let lane=-1;lane<=1;lane++){
+                put(box,pick(paving),lane*1.58,-.19+random()*.012,z,1.58,.38,1.10);
+                if(random()<.27)put(box,0x728160,lane*1.58+(random()-.5)*1.2,.01,z-.43,.1+random()*.38,.013,.09);
+            }
+            for(const s of [-1,1]){
+                const x=s*2.55;
+                put(box,pick(basalt),x,-.16,z,.37,.47,.97);
+                if(j%4===0){
+                    put(rock,0x637b53,s*(8.3+random()*2),-1.3,z,8,2.6,7.2);
+                    put(box,0xa6bc98,s*(3.9+random()*1.3),-.894,z,.8+random(),.01,.045);
+                    put(rock,pick(basalt),s*(4+random()*5),-.58,z,2+random()*2,1.6,2.3);
+                    const fx=s*(3.1+random()*1.5);
+                    for(let k=0;k<8;k++)put(leaf,pick(green),fx,-.32,z,.46,.9,1.34,-.48,k*.786);
+                }
+                if(j%5===0){
+                    const x=s*(5.1+random()*4.5);
+                    if(lagoon)palm(x,z,4.1+random()*4);
+                    else if(lava){
+                        put(rock,0x48404a,x,.3,z,3,3.6,3.7);
+                        put(box,0xe87638,x,.12,z+1.7,2,.06,.15,0,.32);
+                        if(j%15===0)put(cone,0x513f47,x*2.4,2,z,12,9,12);
+                    }else if(fern){
+                        put(pole,0x594b3b,x,1.5,z,.3,3,.3);
+                        for(let k=0;k<12;k++)
+                            put(leaf,k%2?0x658f68:0x366f52,x,2.9,z,.58,1.3,2.8,-.3,k*.524);
+                    }else if(cliffs){
+                        put(rock,0x948679,x,-.55,z,6,3.4,5.8);
+                        if(j%15===0){
+                            for(let k=0;k<7;k++){
+                                const height=1.8+2*Math.sin(k*.97)**2;
+                                put(spray,k%2?0xc5e9e5:0xe3f4ea,x+Math.sin(k)*.38,height*.5,z+Math.cos(k)*.33,.36,height,.38,0,0,Math.sin(k)*.22);
+                            }
+                        }
+                    }else if(plains){
+                        put(rock,0x919049,x,-.3,z,9,2.1,8);
+                        for(let k=0;k<5;k++)put(leaf,k%2?0xc6ae5e:0xb59a49,x+Math.sin(k),.6,z+Math.cos(k),.26,1,1.6,-1.15,k);
+                        if(j%15===0)put(rock,0x77604f,x*2,.7,z,7,4.2,9);
+                    }else if(falls){
+                        const height=7+random()*5;
+                        put(rock,0x466352,x*1.4,height*.36,z,8,height,9);
+                        if(j%20===0){
+                            for(let k=-1;k<=1;k++)put(box,k?0x9ed3d0:0xe0ece0,x*1.4-s*2.9,height*.32,z+k*.48,.3,height*.72,.52,0,0,-s*.13);
+                            put(rock,0xccdfd3,x*1.4-s*3.4,-.2,z,2.4,.7,2.8);
+                        }
+                    }
+                }
+                if((lagoon || fern || falls) && j%7===0){
+                    const tx=s*(10+random()*10), ht=5+random()*7;
+                    put(pole,0x4f523c,tx,ht*.47-.9,z,1.1,ht,1);
+                    put(rock,pick(green),tx,ht-.6,z,6,4,6);
+                }
+                if(j%12===6){
+                    put(pole,0x534d39,x,.72,z,.18,1.6,.18);
+                    put(pole,0xbc965b,x,1.44,z,.35,.25,.35);
+                    put(gem,0xff9936,x,1.85,z,.32,.84,.32);
+                    put(cone,0xffdb73,x,1.89,z+.08,.19,.55,.19);
+                }
+            }
+            if(lagoon && j%36===14){
+                const x=7;
+                put(box,0xa68159,x,.3,z,4.4,.35,3.2);
+                for(const sx of [-1,1])for(const sz of [-1,1])
+                    put(pole,0x835c3c,x+sx*1.55,1.35,z+sz, .18,2,.18);
+                put(rock,0xc6a069,x,2.55,z,5.7,2.3,4.8);
             }
         }
+        // Poles straddle the zip lane; a sagging cable joins the crossarms.
+        const cable=course.cable, laneX=cable.lane*1.55;
+        for(const d of [cable.at,cable.end]){
+            const y=cableHeight(cable,d)+.40;
+            const side=laneX<0?-1:1;
+            put(pole,0x825837,side*2.66,y/2,-d,.28,y,.28);
+            put(box,0xa57d51,(side*2.66+laneX)/2,y,-d,Math.abs(side*2.66-laneX)+.18,.2,.22);
+        }
+        for(let d=cable.at;d<cable.end;d++){
+            const y=cableHeight(cable,d)+.40, next=cableHeight(cable,d+1)+.40;
+            put(box,0x453830,laneX,(y+next)/2,-d-.5,.075,.075,Math.hypot(1,next-y)+.02,Math.atan(next-y));
+        }
+        for(const x of [-2.75,2.75])put(pole,0xdbac65,x,1.8,-course.length,.22,3.6,.22);
+        put(box,0xf0c279,0,3.48,-course.length,5.8,.32,.23);
+        for(const [group,parts] of [[approach,entranceBatches],[forest,courseBatches]])for(const [shape,instances] of parts){
+            const mesh=new T.InstancedMesh(shape,shape===leaf?leaves:shape===spray?foam:mat,instances.length);
+            mesh.castShadow=shape!==spray;mesh.receiveShadow=true;
+            instances.forEach(([matrix,color],i)=>{mesh.setMatrixAt(i,matrix);mesh.setColorAt(i,color);});
+            group.add(mesh);
+        }
+        forest.visible=false;
+        return forest;
     }
-    for(const [shape,instances] of batches){
-        const mesh=new T.InstancedMesh(shape,shape===leaf?leaves:mat,instances.length);
-        mesh.castShadow=true;mesh.receiveShadow=true;
-        instances.forEach(([matrix,color],i)=>{mesh.setMatrixAt(i,matrix);mesh.setColorAt(i,color);});
-        forest.add(mesh);
+    const landscapes=new Map(), route=new T.Group();scene.add(route);
+    const paletteEnd=new T.Color();
+    function landscapeFor(course){
+        if(!landscapes.has(course)){
+            const landscape=buildLandscape(course);
+            route.add(landscape);landscapes.set(course,landscape);
+        }
+        return landscapes.get(course);
     }
-    const repeat=forest.clone();scene.add(repeat);
+    let activeCourse,forest;
     const materials=new Map();
     function piece(parent,shape,color,x,y,z,sx,sy,sz) {
         if(!materials.has(color))materials.set(color,new T.MeshStandardMaterial({color,flatShading:true}));
@@ -134,7 +181,7 @@ export function createTempleScene(canvas) {
         obj.position.set(x,y,z);obj.scale.set(sx,sy,sz);parent.add(obj);return obj;
     }
     const water=piece(scene,box,0x358888,0,-1.03,-56,300,.25,260);water.castShadow=false;
-    for(let i=0;i<12;i++)piece(scene,rock,0x688575,(i-5)*17,-.8,-85-random()*20,27,12+random()*21,26);
+    for(let i=0;i<12;i++)piece(scene,rock,0x688575,(i-5)*17,-.8,-90-12*Math.cos(i*2.63),27,23+10*Math.sin(i*1.72),26);
     const cave=new T.Group();
     scene.add(cave);
     const positions=[], colors=[];
@@ -168,7 +215,8 @@ export function createTempleScene(canvas) {
     caveLight.position.set(-1.8,2.2,-3.6);cave.add(caveLight);
     cave.visible=false;
     const poseRunner=createRunner(scene);
-    const posePursuer=createPursuer(scene);
+    const beastFrame=new T.Group();scene.add(beastFrame);
+    const posePursuer=createPursuer(beastFrame);
     const shadow=new T.Mesh(new T.CircleGeometry(1,20),new T.MeshBasicMaterial({color:0x29382d,transparent:true,opacity:.38,depthWrite:false}));
     shadow.rotation.x=-Math.PI/2;scene.add(shadow);
     const objects=new Map();
@@ -176,6 +224,9 @@ export function createTempleScene(canvas) {
         const g=new T.Group();
         if(kind==='gem'){
             piece(g,gem,0xffbb3b,0,0,0,.58,.84,.58);
+        }else if(kind==='hurdle'){
+            piece(g,pole,0x775036,0,.29,0,.67,5.05,.67).rotation.z=Math.PI/2;
+            piece(g,pole,0xbc9864,-1.05,.45,0,.20,.6,.20).rotation.z=.65;
         }else{
             const gate=kind==='gate',y=gate?1.46:.335;
             if(gate)for(const s of [-1,1])piece(g,box,0x60442f,s*.71,.92,0,.16,1.84,.34);
@@ -184,12 +235,16 @@ export function createTempleScene(canvas) {
         }
         scene.add(g);return g;
     }
-    const free={barrier:[],gate:[],gem:[]};
+    const grip=new T.Group();scene.add(grip);
+    piece(grip,box,0xe8b257,0,.22,0,.07,.44,.07);
+    piece(grip,box,0xffd383,0,0,0,.72,.10,.13);
+    const free={barrier:[],gate:[],gem:[],hurdle:[]};
     const shotPosition=new T.Vector3(),shotTarget=new T.Vector3(),shotDirection=new T.Vector3();
     let prevW=0,prevH=0,previousRatio=0;
-    return function draw(state,distance,p,entities,t,menu,chase){
+    return function draw(state,distance,p,entities,t,menu,chase,course){
         const w=canvas.clientWidth,h=canvas.clientHeight;
         if(!w || !h)return;
+        sprayTime.value=t;
         const ratio=renderPixelRatio(w,h);
         if(w!==prevW || h!==prevH || ratio!==previousRatio){
             renderer.setDrawingBufferSize(w,h,ratio);
@@ -207,7 +262,7 @@ export function createTempleScene(canvas) {
             T.MathUtils.lerp(T.MathUtils.lerp(chaseDepth,3.85+narrow*.7,menu),2.05,catchFocus));
         camera.lookAt(p.x*(.16+.84*catchFocus),1.08-.47*catchFocus,-4.6+menu*3.7+5.36*catchFocus);
         const opening=state==='intro';
-        cave.visible=opening || (state==='playing' && distance<20);
+        cave.visible=course===courses[0] && !chase.completedDistance && (opening || (state==='playing' && distance<20));
         if(cave.visible){
             cave.position.z=chase.runIn+(opening?0:distance);
             const roll=opening?chase.stone:1;
@@ -246,8 +301,46 @@ export function createTempleScene(canvas) {
             shotDirection.multiplyScalar(3.5).add(camera.position).lerp(shotTarget,closeUp);
             camera.lookAt(shotDirection);
         }
-        const strideDistance=state==='intro' ? chase.runIn : distance+(chase.runIn || 0);
-        forest.position.z=(32+strideDistance)%period;repeat.position.z=forest.position.z-period;
+        const strideDistance=state==='intro' ? chase.runIn : chase.completedDistance+distance+(chase.runIn || 0);
+        if(course!==activeCourse){
+            for(const land of landscapes.values())land.visible=false;
+            forest=landscapeFor(course);forest.position.set(0,0,0);forest.rotation.y=0;
+            forest.visible=true;activeCourse=course;
+        }
+        forest.userData.approach.visible=!chase.completedDistance;
+        const index=courses.indexOf(course);
+        const previous=courses[(index+courses.length-1)%courses.length];
+        const back=landscapes.get(previous);
+        if(back){
+            back.visible=chase.completedDistance>0 && distance<18;
+            if(back.visible){
+                const end=trackPoint(previous,previous.length),cs=Math.cos(end.heading),sn=Math.sin(end.heading);
+                back.rotation.y=end.heading;back.position.set(-cs*end.x-sn*end.z,0,sn*end.x-cs*end.z);
+            }
+        }
+        const nextCourse=courses[(index+1)%courses.length];
+        const blend=T.MathUtils.smoothstep(distance,course.length-18,course.length);
+        scene.fog.color.setHex(course.fog).lerp(paletteEnd.setHex(nextCourse.fog),blend);
+        water.material.color.setHex(course.water).lerp(paletteEnd.setHex(nextCourse.water),blend);
+        if(distance>course.length-65){
+            const next=landscapeFor(nextCourse),end=trackPoint(course,course.length);
+            next.visible=true;next.userData.approach.visible=false;
+            next.position.set(end.x,0,end.z);next.rotation.y=-end.heading;
+        }else if(landscapes.has(nextCourse))landscapes.get(nextCourse).visible=false;
+        const origin=trackPoint(course,distance),cs=Math.cos(origin.heading),sn=Math.sin(origin.heading);
+        route.rotation.y=origin.heading;
+        route.position.set(-cs*origin.x-sn*origin.z,0,sn*origin.x-cs*origin.z);
+        function place(obj,d,x,y){
+            const point=routePoint(course,d,x),dx=point.x-origin.x,dz=point.z-origin.z;
+            obj.position.set(cs*dx+sn*dz,y,-sn*dx+cs*dz);
+            obj.rotation.y=origin.heading-point.heading;
+        }
+        const gripAt=p.riding?distance:course.cable.at;
+        grip.visible=p.riding || distance<course.cable.at+1;
+        place(grip,gripAt,course.cable.lane*1.55,cableHeight(course.cable,gripAt));
+        const behind=.8+chase.lead;
+        place(beastFrame,distance-behind,0,0);
+        beastFrame.translateZ(-behind);
         const bite=posePursuer(state,p,t,chase);
         const runnerPosition=poseRunner(state,strideDistance,p,t,menu,chase.stumble,bite,chase.hold,chase.intro);
         shadow.position.set(runnerPosition.x,.018,.02+runnerPosition.z);shadow.scale.set(.37,.48,1);
@@ -255,7 +348,7 @@ export function createTempleScene(canvas) {
         for(const e of entities){
             let obj=objects.get(e);
             if(!obj){obj=free[e.kind].pop()||build(e.kind);objects.set(e,obj);}
-            obj.visible=true;obj.position.set(e.x,0,distance-e.at);
+            obj.visible=true;place(obj,e.at,e.x,0);
             if(e.kind==='barrier'){
                 const topple=e.struckAt===undefined ? 0 : T.MathUtils.smoothstep(t-e.struckAt,0,.30);
                 obj.rotation.x=-1.55*topple;

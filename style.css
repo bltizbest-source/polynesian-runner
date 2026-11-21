@@ -106,3 +106,8 @@ body[data-state=intro] .hud {display:none}
   #help,#home,.close,.done,#start{min-height:44px}
   .close{min-width:44px}
 }
+
+#level-choice{display:block;margin:0 auto 12px;font-size:12px;color:#f1eddf}
+#level-select{max-width:100%;margin-left:5px;padding:8px;color:#fff5df;background:#193c32;border:1px solid #a4ba97;border-radius:5px;font:inherit}
+#route-hud{font-size:12px;font-weight:700;background:#122b23e8;color:#ffe5a4;padding:5px 9px;border-radius:5px}
+dialog p+p{margin-top:8px}

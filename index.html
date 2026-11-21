@@ -3,14 +3,15 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#102821"><title>Polynesian Runner</title>
-<link rel="icon" href="favicon.png" sizes="32x32"><link rel="icon" href="assets/temple-mark.svg" type="image/svg+xml" sizes="any"><link rel="apple-touch-icon" href="assets/apple-touch-icon.png"><link rel="manifest" href="manifest.json"><link rel="stylesheet" href="style.css?v=21">
+<link rel="icon" href="favicon.png" sizes="32x32"><link rel="icon" href="assets/temple-mark.svg" type="image/svg+xml" sizes="any"><link rel="apple-touch-icon" href="assets/apple-touch-icon.png"><link rel="manifest" href="manifest.json"><link rel="stylesheet" href="style.css?v=25">
 </head>
 <body data-state="start">
 <div class="stage">
-  <canvas id="world" aria-label="A three-lane stone path through jungle temple gates"></canvas>
+  <canvas id="world" aria-label="A winding three-lane course with obstacles, gems and a zipline"></canvas>
 </div>
 <aside class="hud" aria-label="Run statistics">
   <div class="stats"><span id="lead-hud" hidden>Lead <b id="lead">5 m</b></span><span id="live" hidden>Score <b id="score">0</b></span><span>Best <b id="best">0</b></span></div>
+  <span id="route-hud" hidden></span>
   <span id="hit" role="status" hidden>Hit · −10 m</span>
 </aside>
 <div class="overlay">
@@ -19,9 +20,10 @@
     <button id="help" aria-haspopup="dialog"><span aria-hidden="true">?</span> How to play</button>
 </header>
 <main id="menu">
-    <div class="course"><i aria-hidden="true"></i> Island course 01</div>
+    <div class="course"><i aria-hidden="true"></i> <span id="course-name">Lagoon Coast</span></div>
     <h1 id="title">Temple<br><em>Passage</em></h1>
-    <p id="description">Chase the gold through ancient gates on an endless jungle run.</p>
+    <p id="description">Follow the bends, leap fallen logs and ride ziplines across six islands.</p>
+    <label id="level-choice">Start in <select id="level-select"></select></label>
     <div class="actions"><button id="start"><span class="play-icon" aria-hidden="true"></span><span id="start-label">Start run</span></button>
     <button id="home" hidden>Main menu</button></div>
   </main>
@@ -31,6 +33,7 @@
 <dialog id="guide" aria-labelledby="guide-title">
   <form method="dialog"><div class="guide-top"><img src="assets/temple-mark.svg" width="38" height="38" alt=""><button class="close" aria-label="Close controls">×</button></div>
     <h2 id="guide-title">How to play</h2><p>You start 5 metres ahead of the ridgeback. Gain 1 metre of lead for every 16 metres of clean running. When you fall, the ridgeback gains 10 metres while you get back up. If it reaches you first, the run ends. Earn 1 point per metre, 1 per obstacle passed, and 10 per gem. Follow the high gems as you jump and the low gems as you duck.</p>
+    <p>Follow the turns automatically. Jump over logs that cross all three lanes. Jump toward the hanging grip in the marked lane to ride a zipline, or stay on the trail. Run through each arch to enter the next level. Your score and lead carry over. After the sixth level, the route circles back to Sāmoa.</p>
     <dl><div><dt>Switch lanes</dt><dd>← / → or swipe sideways</dd></div><div><dt>Jump</dt><dd>Space / ↑ or swipe up<br><small>Jump again in the air to go higher.</small></dd></div><div><dt>Duck</dt><dd>Hold ↓ or swipe down</dd></div></dl>
     <button class="done">Got it</button>
   </form>
