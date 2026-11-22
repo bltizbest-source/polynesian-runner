@@ -1,10 +1,12 @@
 import * as T from './vendor/three.module.min.js';
+import {createNavigatorHead} from './navigator.js';
+import {ease,impactPose} from './motion.js';
 
 // The character faces -Z. Profiles describe elliptical cross-sections in metres.
 export function createRunner(scene) {
     const root = new T.Group();
     scene.add(root);
-    const skin = 0xab6546, hair = 0x241e20, cloth = 0x166357, band = 0xd39651;
+    const skin = 0xb97755, cloth = 0x176465, band = 0xe2b568;
     const sphere = new T.SphereGeometry(1, 18, 14);
     const materials = new Map();
     function material(color) {
@@ -67,10 +69,11 @@ export function createRunner(scene) {
         return {anchor,bend};
     }
     const hips=joint(root),spine=joint(hips),neck=joint(spine,0,.61,-.018);
+    neck.scale.setScalar(1.075);
     const armorGrip=joint(spine,0,.43,.178),gripPosition=new T.Vector3();
     // Wraparound woven panels share a small local texture. The larger bands
     // stay legible from the chase camera; the fine fibre shows in the menu.
-    function weave(base, reed, trim) {
+    function weave(base, reed, trim, printed=false) {
         const tile=document.createElement('canvas');
         tile.width=512;tile.height=256;
         const g=tile.getContext('2d');
@@ -84,6 +87,22 @@ export function createRunner(scene) {
             g.stroke();
         }
         g.globalAlpha=1;
+        if(printed){
+            // A bold block print reads from the chase camera; the fibres
+            // underneath only become visible in the character close-up.
+            for(const x of [68,444]){
+                g.fillStyle=trim;g.fillRect(x,0,10,256);
+                g.fillStyle=reed;g.fillRect(x+16,0,13,256);
+            }
+            g.lineJoin='round';
+            for(let j=0;j<3;j++){
+                const y=48+j*70;
+                g.beginPath();g.moveTo(132,y);g.lineTo(252,y+31);g.lineTo(373,y);
+                g.strokeStyle=trim;g.lineWidth=15;g.stroke();
+                g.beginPath();g.moveTo(190,y);g.lineTo(252,y-16);g.lineTo(314,y);
+                g.lineTo(252,y+16);g.closePath();g.fillStyle=reed;g.fill();
+            }
+        }
         for(const y of [8,207]){
             g.fillStyle=trim;g.fillRect(0,y,512,3);g.fillRect(0,y+31,512,3);
             g.fillStyle=reed;
@@ -92,12 +111,42 @@ export function createRunner(scene) {
                 g.fillStyle=base;g.fillRect(x+13,y+17,3,8);g.fillStyle=reed;
             }
         }
-        const map=new T.CanvasTexture(tile);map.colorSpace=T.SRGBColorSpace;
+        const map=new T.CanvasTexture(tile);map.colorSpace=T.SRGBColorSpace;map.anisotropy=4;
         return new T.MeshStandardMaterial({map,roughness:.91,side:T.DoubleSide});
     }
-    const coir=weave('#724728','#b7884c','#eed3a1');
-    const mantle=weave('#174d48','#498578','#e9c783');
-    const sash=weave('#923d2d','#d67e47','#efd7a2');
+    const coir=weave('#73503e','#ae8056','#e9cb9b');
+    const mantle=weave('#15595b','#42988c','#ecd298');
+    const sash=weave('#a94032','#e89155','#ffdf9c',true);
+    // Bias-cut fabric follows the back surface from shoulder to opposite hip.
+    function panel(parent,rows,mat){
+        const vertices=[],uv=[],indices=[];
+        for(const [i,[x,y,z,width,tilt]] of rows.entries()){
+            for(let k=0;k<3;k++){
+                const s=k-1;
+                vertices.push(x+s*width,y+s*tilt,z+.012*(1-s*s));
+                uv.push(k/2,1-i/(rows.length-1));
+                if(i && k){const n=i*3+k;indices.push(n-4,n-1,n,n-4,n,n-3);}
+            }
+        }
+        const geo=new T.BufferGeometry();
+        geo.setAttribute('position',new T.Float32BufferAttribute(vertices,3));
+        geo.setAttribute('uv',new T.Float32BufferAttribute(uv,2));geo.setIndex(indices);geo.computeVertexNormals();
+        const part=new T.Mesh(geo,mat);part.castShadow=true;parent.add(part);return part;
+    }
+    function shellClasp(x,y,z,side){
+        const points=[],faces=[],tints=[];
+        const ivory=new T.Color(0xffe6b5),ochre=new T.Color(0xcf9860);
+        for(let ring=0;ring<=5;ring++)for(let i=0;i<=28;i++){
+            const a=(i/28-.5)*2.64,r=.05*(.015+ring/5),rib=.5+.5*Math.cos(i*Math.PI/2);
+            points.push(x+r*Math.sin(a)*.85,y+r*Math.cos(a),z+side*(.009*(1-ring/5)+.006*rib*ring/5));
+            const c=ochre.clone().lerp(ivory,.28+.43*rib+.24*ring/5);
+            tints.push(c.r,c.g,c.b);
+            if(i && ring){const n=ring*29+i;faces.push(n-30,n-1,n,n-30,n,n-29);}
+        }
+        const geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(points,3));
+        geo.setAttribute('color',new T.Float32BufferAttribute(tints,3));geo.setIndex(faces);geo.computeVertexNormals();
+        spine.add(new T.Mesh(geo,new T.MeshStandardMaterial({vertexColors:true,side:T.DoubleSide,roughness:.46})));
+    }
     function garment(parent,rows,mat) {
         const geo=profile(rows);
         // Unroll the seam for texturing, retaining the smooth profile normals.
@@ -118,43 +167,38 @@ export function createRunner(scene) {
     garment(spine,[[-.015,.189,.168],[.09,.181,.149],[.20,.181,.143],
         [.32,.216,.169],[.43,.256,.173],[.485,.263,.157],[.52,.222,.14],
         [.557,.15,.112],[.576,.09,.087]],coir);
-    // Woven shoulder yoke, with a shell clasp at front and back.
+    // Dyed shoulder yoke and a shell clasp on the collar.
     garment(spine,[[.378,.251,.183],[.415,.263,.185],[.47,.271,.177],
         [.508,.244,.158],[.55,.17,.124],[.582,.09,.09]],mantle);
-    for(const side of [-1,1]){
-        oval(spine,0x523d28,0,.407,side*.183,.043,.050,.014);
-        oval(spine,0xe8d4a6,0,.410,side*.193,.032,.042,.010);
-        oval(spine,0xab835c,0,.410,side*.202,.004,.024,.003);
-    }
+    shellClasp(-.086,.385,-.202,-1);
     const wrap=garment(hips,[[-.244,.244,.206],[-.20,.24,.201],[-.10,.221,.182],
         [.016,.198,.173],[.08,.181,.153]],mantle);
+    const hem=wrap.geometry.attributes.position;
+    for(let i=0;i<hem.count;i++){
+        const x=hem.getX(i),y=hem.getY(i),z=hem.getZ(i),a=Math.atan2(z,x);
+        const weight=T.MathUtils.smoothstep(-y,.01,.244);
+        hem.setXYZ(i,x*(1+.027*weight*Math.cos(8*a)),
+            y-weight*(.046+.040*Math.sin(a+.64)+.012*Math.cos(3*a)),z*(1+.025*weight*Math.cos(8*a)));
+    }
     garment(hips,[[-.015,.201,.179],[.038,.198,.173],[.088,.19,.159]],sash);
+    panel(spine,[[.13,.06,-.163,.064,.024],[.04,.21,-.168,.081,.03],[-.064,.34,-.193,.088,.03],
+        [-.128,.443,-.195,.084,.025],[-.158,.51,-.149,.074,.025],[-.168,.548,-.086,.068,.018],
+        [-.168,.557,0,.068,.018],[-.168,.542,.083,.072,.020],[-.155,.506,.142,.077,.025],
+        [-.14,.46,.179,.088,.031],[-.084,.36,.19,.093,.034],[-.025,.25,.178,.087,.036],
+        [.064,.139,.16,.081,.035],[.122,.056,.153,.069,.028],[.135,.018,.146,.06,.02]],sash);
+    const tails=joint(hips,.117,.052,.152);
+    panel(tails,[[0,0,.005,.074,.012],[.022,-.10,.033,.095,.018],[.028,-.23,.074,.104,.012],
+        [.011,-.34,.115,.094,.017],[-.022,-.455,.139,.069,.038]],sash);
+    shellClasp(-.12,.416,.195,1);
 
-    mesh(neck,profile([[-.005,.047,.052,-.03],[.025,.08,.082,-.025],
-        [.08,.097,.104,-.013],[.146,.106,.112],[.209,.098,.105],[.252,.069,.079],[.267,.01,.012]]),skin);
+    const knot=createNavigatorHead(neck);
     for(const side of [-1,1]){
-        oval(neck,skin,side*.103,.119,.007,.022,.039,.021);
-        const eye=joint(neck,side*.044,.138,-.100);
-        eye.rotation.y=-side*.33;
-        oval(eye,0xc7ac91,0,0,-.001,.020,.007,.009);
-        oval(eye,0x332620,0,0,-.008,.008,.0065,.004);
-        oval(eye,skin,0,.007,-.002,.022,.005,.010);
-        oval(neck,0x93533d,side*.113,.122,.006,.013,.024,.012);
-        oval(neck,hair,side*.044,.155,-.104,.023,.005,.006).rotation.z=side*.09;
-        oval(neck,band,side*.111,.094,.002,.009,.014,.009);
+        oval(neck,skin,side*.11,.137,.009,.021,.038,.020);
+        oval(neck,0xa25d46,side*.123,.138,.008,.009,.022,.012);
+        oval(neck,band,side*.123,.107,.006,.008,.012,.008);
     }
-    oval(neck,skin,0,.113,-.113,.022,.036,.027);
-    oval(neck,0x924f40,0,.072,-.111,.029,.006,.009);
-    oval(neck,0xb47257,0,.064,-.110,.025,.006,.008);
-    oval(neck,hair,0,.198,.017,.11,.10,.115);
-    oval(neck,hair,0,.143,.065,.10,.082,.071);
-    const knot=joint(neck,0,.259,.077);
-    oval(knot,hair,0,.016,.012,.077,.061,.073);
-    for(let i=0;i<7;i++){
-        const a=i*.898;
-        oval(knot,0x382b27,.045*Math.cos(a),.033,.012+.046*Math.sin(a),.03,.034,.032);
-    }
-    mesh(neck,profile([[.18,.109,.114,.012],[.198,.111,.117,.012]]),0xc55e3c);
+    const tie=joint(knot,.036,-.022,.049);
+    panel(tie,[[0,0,0,.018,.001],[.015,-.067,.029,.022,.003],[.022,-.125,.041,.014,.010]],sash);
 
     const thigh=.425,calf=.411;
     const limbs=[-1,1].map(s=>{
@@ -190,8 +234,8 @@ export function createRunner(scene) {
         oval(wrist,skin,-s*.024,-.033,-.030,.014,.030,.016).rotation.x=.42;
         garment(arm.bend,[[-.235,.042,.045],[-.195,.049,.053],
             [-.111,.059,.068],[-.068,.065,.069]],coir);
-        garment(arm.anchor,[[-.118,.082,.10],[-.074,.102,.11],
-            [-.026,.108,.108],[.021,.094,.093],[.053,.066,.065],[.067,.015,.018]],s<0?coir:mantle);
+        garment(arm.anchor,[[-.153,.075,.091],[-.137,.082,.096],[-.109,.087,.096]],
+            s<0?sash:mantle);
         return {s,leg,foot,arm,wrist};
     });
     let lastTime=0,airborne=false,impact=0;
@@ -201,16 +245,23 @@ export function createRunner(scene) {
         const opening=state==='intro';
         const glance=opening ? Math.sin(Math.PI*T.MathUtils.smoothstep(intro,3.4,6.1)) : 0;
         const walking=opening && intro<2.8;
-        const running=state==='playing' || opening,air=T.MathUtils.smoothstep(p.y,0,.3);
+        const falling=p.drop, pivot=p.pivot;
+        const collision=p.impact && impactPose(p.impact.kind,p.impact.phase);
+        const drop=falling?ease(falling.phase/.52):0;
+        const running=state==='playing' || state==='falling' || opening,air=T.MathUtils.smoothstep(p.y,0,.3);
         if(running && !p.y && airborne)impact=1;
         if(!running)impact=0;
         airborne=p.y>0;impact*=Math.exp(-11*dt);
         const cycle=running?distance/(walking?1.65:4.25):0,angle=cycle*2*Math.PI;
-        const c=p.crouch, travel=running?(1-c)*(1-air)*(walking?.72:1):0;
+        const c=p.crouch, travel=running?(1-c)*(1-air)*(1-drop)*(1-(collision?.weight||0))*(walking?.72:1):0;
         const {fallen, kneeling} = p;
-        const lean=p.lane*1.55-p.x, breath=Math.sin(t*2.2)*.008;
+        const lean=T.MathUtils.clamp((p.laneVelocity||0)*.12,-1.55,1.55), breath=Math.sin(t*2.2)*.008;
         root.position.set(p.x,p.y,stumble*.48);root.rotation.z=-lean*.105-stumble*.61;
         root.rotation.y=menu*2.48*(1-stumble)-lean*.15+stumble*.48;
+        if(pivot){
+            root.rotation.y+=pivot.yaw;
+            root.rotation.z-=pivot.lean*.26;
+        }
         const hipY=mix(.845-.032*Math.cos(angle*2-1.05)*travel-.086*impact,.335,c);
         hips.position.set(.021*Math.sin(angle)*travel,hipY,0);
         // Pivot at the pelvis so the shoulder lands beside the hip. The trailing
@@ -226,8 +277,31 @@ export function createRunner(scene) {
         spine.rotation.x+=walking ? .12 : 0;
         neck.rotation.x=-spine.rotation.x*.73;
         neck.rotation.y=-.55*spine.rotation.y-lean*.12-1.34*glance;
+        if(pivot){
+            hips.position.y-=.13*pivot.plant;
+            spine.rotation.y-=pivot.lean*.32;
+            neck.rotation.y-=pivot.lean*.35;
+        }
+        if(collision){
+            const w=collision.weight;
+            hips.position.y=mix(hips.position.y,collision.height,w);
+            hips.rotation.x=mix(hips.rotation.x,collision.pitch,w);
+            hips.rotation.z=mix(hips.rotation.z,collision.roll,w);
+            spine.rotation.x-=.18*w;neck.rotation.x+=.32*w;
+        }
+        if(drop){
+            const skid=falling.kind==='corner', reaching=falling.kind==='zipline';
+            hips.position.y-=drop*.12;
+            hips.rotation.x-=drop*(reaching?.18:.60);
+            hips.rotation.z+=drop*(skid?-.68*falling.direction:.20);
+            neck.rotation.y-=skid?falling.direction*drop*.65:0;
+            neck.rotation.x+=drop*(reaching?-.48:.24);
+        }
         wrap.rotation.z=.032*Math.sin(angle)*travel;
         knot.rotation.x=.08*Math.sin(angle*2)*travel;
+        tails.rotation.x=-.16-.58*travel-.18*air-.12*Math.sin(angle)*travel;
+        tails.rotation.z=.13*Math.sin(angle*.5)*travel+(pivot?.lean||0)*.35;
+        tie.rotation.x=-.22-.35*travel+.12*Math.sin(angle)*travel;
         for(const {s,leg,foot,arm,wrist} of limbs){
             const phase=(cycle+(s>0?.5:0))%1;
             // During stance the ankle travels backward with the paving. The
@@ -267,11 +341,36 @@ export function createRunner(scene) {
             arm.anchor.rotation.z = mix(arm.anchor.rotation.z, s*.23, fallen + kneeling);
             arm.bend.rotation.x = mix(arm.bend.rotation.x, 1.42, fallen);
             arm.bend.rotation.x = mix(arm.bend.rotation.x, .35, kneeling);
-            if(p.riding){
-                arm.anchor.rotation.set(3.04,0,s*.12);
-                arm.bend.rotation.x=.22;
-                leg.anchor.rotation.x=.22+s*.13;
-                leg.bend.rotation.x=-.68;
+            if(pivot){
+                const outside=s!==pivot.direction;
+                leg.anchor.rotation.x+=pivot.plant*(outside?.20:-.30);
+                leg.bend.rotation.x-=pivot.plant*(outside?.25:.56);
+                arm.anchor.rotation.z+=s*pivot.plant*(outside?.65:.18);
+                arm.anchor.rotation.x-=pivot.lean*s*.38;
+            }
+            if(collision){
+                const w=collision.weight;
+                leg.anchor.rotation.x=mix(leg.anchor.rotation.x,collision.thigh+(s>0?.22:-.28),w);
+                leg.bend.rotation.x=mix(leg.bend.rotation.x,-collision.knee+(s>0?-.14:.12),w);
+                arm.anchor.rotation.set(mix(arm.anchor.rotation.x,collision.reach+s*.17,w),0,s*(.15+.28*w));
+                arm.bend.rotation.x=mix(arm.bend.rotation.x,.28+.72*Math.sin(Math.PI*p.impact.phase),w);
+                foot.rotation.x=mix(foot.rotation.x,.22,w);
+            }
+            if(drop){
+                const reach=falling.kind==='zipline' && s>0;
+                arm.anchor.rotation.x=mix(arm.anchor.rotation.x,reach?2.9:.78+s*.30,drop);
+                arm.anchor.rotation.z+=s*(reach?.18:1.1)*drop;
+                arm.bend.rotation.x=mix(arm.bend.rotation.x,.25+.35*Math.sin(falling.phase*8+s),drop);
+                leg.anchor.rotation.x+=drop*(s>0?.69:-.48);
+                leg.bend.rotation.x-=drop*(s>0?1.03:.63);
+            }
+            if(p.grip>.001){
+                const w=p.grip;
+                arm.anchor.rotation.x=mix(arm.anchor.rotation.x,3.04,w);
+                arm.anchor.rotation.z=mix(arm.anchor.rotation.z,s*.12,w);
+                arm.bend.rotation.x=mix(arm.bend.rotation.x,.22,w);
+                leg.anchor.rotation.x=mix(leg.anchor.rotation.x,.22+s*.13,w);
+                leg.bend.rotation.x=mix(leg.bend.rotation.x,-.68,w);
             }
             if(bite){
                 const lift=T.MathUtils.smoothstep(hold,.18,.86);

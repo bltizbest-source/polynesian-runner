@@ -59,7 +59,7 @@ dt{font-size:14px;font-weight:750}dd{margin:0}small{color:#536658}.done{width:10
           max(50px,calc(env(safe-area-inset-bottom) + 12px));
 }
 .overlay > * {flex:none}
-body:is([data-state=intro],[data-state=playing],[data-state=catching]) .overlay {pointer-events:none}
+body:is([data-state=intro],[data-state=playing],[data-state=catching],[data-state=falling]) .overlay {pointer-events:none}
 .overlay button {pointer-events:auto}
 main p {margin-inline:auto}
 .course,.actions,.guide-top,.keys {justify-content:center}
@@ -67,9 +67,9 @@ main p {margin-inline:auto}
 dialog {text-align:center;overflow:auto;overscroll-behavior:contain}
 dl>div {grid-template-columns:1fr;gap:3px}
 dd {margin:0}
-body:is([data-state=intro],[data-state=playing],[data-state=catching]) {touch-action:none}
-body:is([data-state=intro],[data-state=playing],[data-state=catching]) .stage::before,
-body:is([data-state=intro],[data-state=playing],[data-state=catching]) :is(footer,#help,.brand),
+body:is([data-state=intro],[data-state=playing],[data-state=catching],[data-state=falling]) {touch-action:none}
+body:is([data-state=intro],[data-state=playing],[data-state=catching],[data-state=falling]) .stage::before,
+body:is([data-state=intro],[data-state=playing],[data-state=catching],[data-state=falling]) :is(footer,#help,.brand),
 body[data-state=intro] header,
 body[data-state=intro] .hud {display:none}
 .hud {
@@ -111,3 +111,8 @@ body[data-state=intro] .hud {display:none}
 #level-select{max-width:100%;margin-left:5px;padding:8px;color:#fff5df;background:#193c32;border:1px solid #a4ba97;border-radius:5px;font:inherit}
 #route-hud{font-size:12px;font-weight:700;background:#122b23e8;color:#ffe5a4;padding:5px 9px;border-radius:5px}
 dialog p+p{margin-top:8px}
+
+#title{font-weight:600;letter-spacing:-.063em;text-shadow:0 3px 24px #092a2882}
+#title em{font-style:italic;font-weight:500;color:#ffd691}
+#start,.done{background:linear-gradient(165deg,#ffe1a3,#efb869);box-shadow:0 3px 0 #9a693a,0 6px 20px #122f2b33}
+.hud .stats>span,#route-hud{background:#183b36e8;box-shadow:inset 0 0 0 1px #efe3b52b}

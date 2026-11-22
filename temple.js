@@ -1,7 +1,8 @@
-import {courses,trackPoint,routePoint,cableHeight} from './courses.js';
+import {courses,trackPoint,routePoint,cableHeight,viewPoint,openSpan} from './courses.js';
 import {renderPixelRatio} from './viewport.js';
 import * as T from './vendor/three.module.min.js';
 import {caveFaces,tripStoneAt} from './cave.js';
+import {paintedFlora,palmFrond,coastalStone,trailMaterial,waterMaterial} from './island-art.js';
 import {createRunner} from './runner.js';
 import {createPursuer} from './pursuer.js';
 
@@ -12,27 +13,40 @@ export function createTempleScene(canvas) {
     renderer.shadowMap.type=T.PCFSoftShadowMap;
     const scene = new T.Scene(), camera = new T.PerspectiveCamera(58,1,.1,160);
     scene.background=new T.Color(0xd0bc87);
-    scene.fog=new T.FogExp2(0xabc4a4,.023);
-    scene.add(new T.HemisphereLight(0xfff2dc,0x799481,1.52));
-    const sun=new T.DirectionalLight(0xffe2b4,2.65);
+    scene.fog=new T.FogExp2(0xabc4a4,.020);
+    const loader=new T.TextureLoader();
+    const horizonReady={value:0};
+    const horizon=loader.load('./assets/island-horizon.webp',()=>{horizonReady.value=1;});
+    horizon.colorSpace=T.SRGBColorSpace;horizon.wrapS=T.MirroredRepeatWrapping;
+    scene.add(new T.HemisphereLight(0xffeade,0x88a5a1,1.66));
+    const sun=new T.DirectionalLight(0xffdfb1,2.24);
     sun.position.set(-11,19,1);sun.target.position.set(0,0,-11);
     sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);
     Object.assign(sun.shadow.camera,{left:-17,right:17,top:17,bottom:-17,near:.2,far:59});
     sun.shadow.normalBias=.027;sun.shadow.bias=-.0003;
     scene.add(sun,sun.target);
     const sky=new T.Mesh(new T.SphereGeometry(145,24,12),new T.ShaderMaterial({
-        side:T.BackSide,depthWrite:false,
+        side:T.BackSide,depthWrite:false, uniforms:{paint:{value:horizon},ready:horizonReady},
         vertexShader:'varying vec3 v; void main(){v=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-        fragmentShader:`varying vec3 v; void main(){vec3 d=normalize(v);
+        fragmentShader:`uniform sampler2D paint;uniform float ready;varying vec3 v; void main(){vec3 d=normalize(v);
             float h=smoothstep(-.02,.65,d.y),s=dot(d,normalize(vec3(-.42,.42,-1.)));
             vec3 col=mix(vec3(.82,.85,.71),vec3(.35,.68,.71),h);
             col+=vec3(.28,.17,.02)*pow(max(s,0.),18.);
-            col=mix(col,vec3(1.,.92,.68),smoothstep(.992,.995,s));gl_FragColor=vec4(col,1.);}`
+            col=mix(col,vec3(1.,.92,.68),smoothstep(.992,.995,s));vec2 uv=vec2(.5+atan(d.x,-d.z)/1.85,clamp(.12+d.y*1.03,0.,1.));
+            gl_FragColor=vec4(mix(col,texture2D(paint,uv).rgb,ready),1.);
+            #include <colorspace_fragment>
+            }`
     }));
     scene.add(sky);
-    const box=new T.BoxGeometry(), rock=new T.DodecahedronGeometry(.5), gem=new T.OctahedronGeometry(.5);
-    const pole=new T.CylinderGeometry(.46,.52,1,7), cone=new T.ConeGeometry(.5,1,7);
-    const mat=new T.MeshStandardMaterial({flatShading:true,roughness:.95});
+    const box=new T.BoxGeometry(), rock=coastalStone(), gem=new T.LatheGeometry([[0,-.52],[.39,-.09],[.44,.08],[.24,.35],[.055,.42],[0,.42]].map(([r,y])=>new T.Vector2(r,y)),8);
+    const flame=new T.LatheGeometry([[.02,-.45],[.28,-.35],[.36,-.12],[.25,.12],[.12,.29],[.012,.50]]
+        .map(([r,y])=>new T.Vector2(r,y)),10);
+    const ember=flame.attributes.position;
+    for(let i=0;i<ember.count;i++)ember.setX(i,ember.getX(i)+.19*(ember.getY(i)+.45)**2);
+    const glow=new T.MeshBasicMaterial();
+    const pole=new T.CylinderGeometry(.43,.53,1,12), cone=new T.ConeGeometry(.5,1,7);
+    const mat=new T.MeshStandardMaterial({roughness:.93});
+    const stoneMaterial=mat.clone();stoneMaterial.vertexColors=true;
     const spray=rock.clone(), foam=mat.clone(), sprayTime={value:0};
     foam.onBeforeCompile=shader=>{
         shader.uniforms.sprayTime=sprayTime;
@@ -46,15 +60,37 @@ export function createTempleScene(canvas) {
         -.47,.18,.44,0,-.13,1,0,.32,.48, 0,.32,.48,0,-.13,1,.47,.18,.44
     ],3));leaf.computeVertexNormals();
     const leaves=mat.clone();leaves.side=T.DoubleSide;
+    const flora=paintedFlora(loader), frond=palmFrond(), trunk=new T.CylinderGeometry(.42,.54,1,10,5);
+    const trunkVertices=trunk.attributes.position;
+    for(let i=0;i<trunkVertices.count;i++){
+        const h=trunkVertices.getY(i)+.5;
+        trunkVertices.setX(i,trunkVertices.getX(i)+1.6*h*h);
+    }
+    trunk.computeVertexNormals();
+    const trail=new T.BoxGeometry(),paintedTrail=trailMaterial(loader);
+    const roof=new T.SphereGeometry(.5,18,8,0,Math.PI*2,0,Math.PI*.52);
     function buildLandscape(course) {
         const forest=new T.Group();scene.add(forest);
         const approach=new T.Group();forest.add(approach);
         forest.userData.approach=approach;
         const entranceBatches=new Map(), courseBatches=new Map(), temp=new T.Object3D();
         let batches=entranceBatches;
-        function put(shape,color,x,y,z,sx,sy,sz,rx=0,ry=0,rz=0) {
-            const at=trackPoint(course,-z,x);
-            temp.position.set(at.x,y,at.z);temp.scale.set(sx,sy,sz);temp.rotation.set(rx,ry-at.heading,rz,'YXZ');temp.updateMatrix();
+        const limits=[-36,...course.turns.map(([at])=>at),course.length];
+        const segments=limits.slice(1).map((end,i)=>{
+            const start=limits[i],p=trackPoint(course,start),q=trackPoint(course,end);
+            return {start,end,p,dx:(q.x-p.x)/(end-start),dz:(q.z-p.z)/(end-start)};
+        });
+        function put(shape,color,x,y,z,sx,sy,sz,rx=0,ry=0,rz=0,along=0) {
+            const at=trackPoint(course,-z),cs=Math.cos(at.heading),sn=Math.sin(at.heading);
+            const wx=at.x+cs*x+sn*along,wz=at.z+sn*x-cs*along;
+            // Keep scenery from the approach off the perpendicular exit lane.
+            if(Math.abs(x)>3 && y+sy/2>0 && segments.some(({start,end,p,dx,dz})=>{
+                if(-z>=start && -z<=end)return false;
+                const u=wx-p.x,v=wz-p.z;
+                const nearest=Math.max(0,Math.min(end-start,u*dx+v*dz));
+                return Math.hypot(u-nearest*dx,v-nearest*dz)<2.75+Math.max(sx,sz)*.5;
+            }))return;
+            temp.position.set(wx,y,wz);temp.scale.set(sx,sy,sz);temp.rotation.set(rx,ry-at.heading,rz,'YXZ');temp.updateMatrix();
             if(!batches.has(shape))batches.set(shape,[]);
             batches.get(shape).push([temp.matrix.clone(),new T.Color(color)]);
         }
@@ -65,43 +101,51 @@ export function createTempleScene(canvas) {
         const pick=colors=>colors[Math.floor(random()*colors.length)];
         function palm(x,z,height) {
             const tilt=(random()-.5)*.22;
-            put(pole,0x695b40,x,height*.46-.7,z,.43,height,.43,0,0,tilt);
-            for(let i=0;i<10;i++){
-                put(leaf,pick(green),x-height*.48*Math.sin(tilt),height*.96-.7,z,1.15+random(),2,2.2+random()*2,(random()-.45)*.58,i*.628+tilt);
-            }
+            put(trunk,0x967151,x,height*.5-.73,z,.40,height,.42,0,0,tilt);
+            const crown=x+.64-height*.50*Math.sin(tilt);
+            for(let i=0;i<9;i++)
+                put(frond.geo,pick(green),crown,height-.72,z,.98+random()*.64,2.6,2.8+random()*1.3,(random()-.55)*.58,i*.698+tilt);
+
         }
         const [lagoon,lava,fern,cliffs,plains,falls]=courses.map(c=>c===course);
         for(let j=-36;j<course.length;j++){
             if(j===0)batches=courseBatches;
+            if(openSpan(course,j))continue;
+            if(course.turns.some(([at])=>Math.abs(j-at)<=2))continue;
             const z=-j;
-            for(let lane=-1;lane<=1;lane++){
-                put(box,pick(paving),lane*1.58,-.19+random()*.012,z,1.58,.38,1.10);
-                if(random()<.27)put(box,0x728160,lane*1.58+(random()-.5)*1.2,.01,z-.43,.1+random()*.38,.013,.09);
-            }
+            put(trail,paving[1],0,-.19,z,4.96,.38,1.005);
             for(const s of [-1,1]){
                 const x=s*2.55;
-                put(box,pick(basalt),x,-.16,z,.37,.47,.97);
+                put(rock,pick(basalt),x,-.22,z,.65,.57,1.26,0,.08*Math.sin(j));
                 if(j%4===0){
                     put(rock,0x637b53,s*(8.3+random()*2),-1.3,z,8,2.6,7.2);
                     put(box,0xa6bc98,s*(3.9+random()*1.3),-.894,z,.8+random(),.01,.045);
                     put(rock,pick(basalt),s*(4+random()*5),-.58,z,2+random()*2,1.6,2.3);
                     const fx=s*(3.1+random()*1.5);
-                    for(let k=0;k<8;k++)put(leaf,pick(green),fx,-.32,z,.46,.9,1.34,-.48,k*.786);
+                    if(j%8===0){
+                        const size=.85+random()*.44, shrub=lava || plains?3:2;
+                        put(flora.shapes[shrub],0xf1ebd8,fx,-.38,z,2.6*size,1.32*size,1);
+                    }
                 }
-                if(j%5===0){
+                if(j%7===0){
                     const x=s*(5.1+random()*4.5);
-                    if(lagoon)palm(x,z,4.1+random()*4);
+                    if(lagoon){
+                        const h=4.4+random()*3;
+                        if(j%21===0)palm(x,z,h);
+                        else put(flora.shapes[0],0xfff7e2,x,-.54,z,h*.77,h,1);
+                        put(rock,0x8c9562,x,-1.03,z,4.9,1.2,3.9);
+                    }
                     else if(lava){
                         put(rock,0x48404a,x,.3,z,3,3.6,3.7);
                         put(box,0xe87638,x,.12,z+1.7,2,.06,.15,0,.32);
-                        if(j%15===0)put(cone,0x513f47,x*2.4,2,z,12,9,12);
+                        if(j%21===0)put(cone,0x513f47,x*2.4,2,z,12,9,12);
                     }else if(fern){
                         put(pole,0x594b3b,x,1.5,z,.3,3,.3);
                         for(let k=0;k<12;k++)
-                            put(leaf,k%2?0x658f68:0x366f52,x,2.9,z,.58,1.3,2.8,-.3,k*.524);
+                            put(frond.geo,k%2?0x99bc89:0x648b6a,x,2.9,z,.58,1.3,2.8,-.3,k*.524);
                     }else if(cliffs){
                         put(rock,0x948679,x,-.55,z,6,3.4,5.8);
-                        if(j%15===0){
+                        if(j%21===0){
                             for(let k=0;k<7;k++){
                                 const height=1.8+2*Math.sin(k*.97)**2;
                                 put(spray,k%2?0xc5e9e5:0xe3f4ea,x+Math.sin(k)*.38,height*.5,z+Math.cos(k)*.33,.36,height,.38,0,0,Math.sin(k)*.22);
@@ -110,26 +154,26 @@ export function createTempleScene(canvas) {
                     }else if(plains){
                         put(rock,0x919049,x,-.3,z,9,2.1,8);
                         for(let k=0;k<5;k++)put(leaf,k%2?0xc6ae5e:0xb59a49,x+Math.sin(k),.6,z+Math.cos(k),.26,1,1.6,-1.15,k);
-                        if(j%15===0)put(rock,0x77604f,x*2,.7,z,7,4.2,9);
+                        if(j%21===0)put(rock,0x77604f,x*2,.7,z,7,4.2,9);
                     }else if(falls){
                         const height=7+random()*5;
                         put(rock,0x466352,x*1.4,height*.36,z,8,height,9);
-                        if(j%20===0){
+                        if(j%21===0){
                             for(let k=-1;k<=1;k++)put(box,k?0x9ed3d0:0xe0ece0,x*1.4-s*2.9,height*.32,z+k*.48,.3,height*.72,.52,0,0,-s*.13);
                             put(rock,0xccdfd3,x*1.4-s*3.4,-.2,z,2.4,.7,2.8);
                         }
                     }
                 }
-                if((lagoon || fern || falls) && j%7===0){
+                if((lagoon || fern || falls) && j%11===0){
                     const tx=s*(10+random()*10), ht=5+random()*7;
-                    put(pole,0x4f523c,tx,ht*.47-.9,z,1.1,ht,1);
-                    put(rock,pick(green),tx,ht-.6,z,6,4,6);
+                    put(rock,0x799065,tx,-1.10,z,8,1.55,7);
+                    put(flora.shapes[1],0xe5efdc,tx,-.43,z,ht*1.23,ht,1);
                 }
-                if(j%12===6){
+                if(j%20===6){
                     put(pole,0x534d39,x,.72,z,.18,1.6,.18);
                     put(pole,0xbc965b,x,1.44,z,.35,.25,.35);
-                    put(gem,0xff9936,x,1.85,z,.32,.84,.32);
-                    put(cone,0xffdb73,x,1.89,z+.08,.19,.55,.19);
+                    put(flame,0xff8b40,x,1.85,z,.32,.84,.32);
+                    put(flame,0xffdf83,x,1.89,z+.08,.19,.55,.19);
                 }
             }
             if(lagoon && j%36===14){
@@ -137,8 +181,24 @@ export function createTempleScene(canvas) {
                 put(box,0xa68159,x,.3,z,4.4,.35,3.2);
                 for(const sx of [-1,1])for(const sz of [-1,1])
                     put(pole,0x835c3c,x+sx*1.55,1.35,z+sz, .18,2,.18);
-                put(rock,0xc6a069,x,2.55,z,5.7,2.3,4.8);
+                put(roof,0xbf8d52,x,2.28,z,5.5,3.1,4.5);
+                put(pole,0x997048,x,2.24,z,5.55,.17,4.58);
             }
+        }
+        for(const [at,dir] of course.turns){
+            const x=-dir*2.85,z=3-at;
+            // Fill the shared 5 m square once. Its two open sides connect the legs.
+            put(trail,paving[1],0,-.19,-at,5,.38,5);
+            put(box,pick(basalt),-dir*2.55,-.16,-at,.37,.47,5.49);
+            put(box,pick(basalt),0,-.16,-at,5.45,.47,.37,0,0,0,2.55);
+            put(pole,0x795537,x,.85,z,.15,1.7,.15);
+            put(box,0x283c32,x,1.62,z,1.32,.72,.15);
+            for(const offset of [-.24,.16])for(const side of [-1,1]){
+                put(box,0xffd174,x+offset,1.62+side*.105,z+.10,.38,.09,.06,0,0,-dir*side*.65);
+            }
+        }
+        for(const at of [...course.gaps.map(g=>g-2),course.cable.at+1]){
+            put(box,0xe3ba79,0,.016,-at-.36,4.72,.035,.16);
         }
         // Poles straddle the zip lane; a sagging cable joins the crossarms.
         const cable=course.cable, laneX=cable.lane*1.55;
@@ -154,9 +214,11 @@ export function createTempleScene(canvas) {
         }
         for(const x of [-2.75,2.75])put(pole,0xdbac65,x,1.8,-course.length,.22,3.6,.22);
         put(box,0xf0c279,0,3.48,-course.length,5.8,.32,.23);
+        const surfaces=new Map([[rock,stoneMaterial],[frond.geo,frond.mat],[trail,paintedTrail],[leaf,leaves],[spray,foam],[flame,glow],
+            ...flora.shapes.map(shape=>[shape,flora.mat])]);
         for(const [group,parts] of [[approach,entranceBatches],[forest,courseBatches]])for(const [shape,instances] of parts){
-            const mesh=new T.InstancedMesh(shape,shape===leaf?leaves:shape===spray?foam:mat,instances.length);
-            mesh.castShadow=shape!==spray;mesh.receiveShadow=true;
+            const mesh=new T.InstancedMesh(shape,surfaces.get(shape)||mat,instances.length);
+            mesh.castShadow=shape!==spray && shape!==frond.geo && !flora.shapes.includes(shape);mesh.receiveShadow=true;
             instances.forEach(([matrix,color],i)=>{mesh.setMatrixAt(i,matrix);mesh.setColorAt(i,color);});
             group.add(mesh);
         }
@@ -175,13 +237,14 @@ export function createTempleScene(canvas) {
     let activeCourse,forest;
     const materials=new Map();
     function piece(parent,shape,color,x,y,z,sx,sy,sz) {
-        if(!materials.has(color))materials.set(color,new T.MeshStandardMaterial({color,flatShading:true}));
+        if(!materials.has(color))materials.set(color,new T.MeshStandardMaterial({color,roughness:.84}));
         const obj=new T.Mesh(shape,materials.get(color));
         obj.castShadow=true;obj.receiveShadow=true;
         obj.position.set(x,y,z);obj.scale.set(sx,sy,sz);parent.add(obj);return obj;
     }
-    const water=piece(scene,box,0x358888,0,-1.03,-56,300,.25,260);water.castShadow=false;
-    for(let i=0;i<12;i++)piece(scene,rock,0x688575,(i-5)*17,-.8,-90-12*Math.cos(i*2.63),27,23+10*Math.sin(i*1.72),26);
+    const ripples=waterMaterial(sprayTime);
+    const water=new T.Mesh(box,ripples.mat);water.scale.set(320,.25,310);water.position.set(0,-1.03,-56);water.receiveShadow=true;scene.add(water);
+
     const cave=new T.Group();
     scene.add(cave);
     const positions=[], colors=[];
@@ -218,20 +281,31 @@ export function createTempleScene(canvas) {
     const beastFrame=new T.Group();scene.add(beastFrame);
     const posePursuer=createPursuer(beastFrame);
     const shadow=new T.Mesh(new T.CircleGeometry(1,20),new T.MeshBasicMaterial({color:0x29382d,transparent:true,opacity:.38,depthWrite:false}));
+    const penumbra=document.createElement('canvas');penumbra.width=penumbra.height=64;
+    const ink=penumbra.getContext('2d'),radial=ink.createRadialGradient(32,32,2,32,32,31);
+    radial.addColorStop(0,'white');radial.addColorStop(.52,'#ffffffbb');radial.addColorStop(1,'#ffffff00');
+    ink.fillStyle=radial;ink.fillRect(0,0,64,64);shadow.material.map=new T.CanvasTexture(penumbra);
     shadow.rotation.x=-Math.PI/2;scene.add(shadow);
     const objects=new Map();
     function build(kind){
         const g=new T.Group();
         if(kind==='gem'){
-            piece(g,gem,0xffbb3b,0,0,0,.58,.84,.58);
+            const jewel=piece(g,gem,0xffbb3b,0,0,0,.65,.86,.65);
+            Object.assign(jewel.material,{roughness:.28,metalness:.24,flatShading:true});
+            jewel.material.emissive.setHex(0x71410a);
         }else if(kind==='hurdle'){
             piece(g,pole,0x775036,0,.29,0,.67,5.05,.67).rotation.z=Math.PI/2;
             piece(g,pole,0xbc9864,-1.05,.45,0,.20,.6,.20).rotation.z=.65;
         }else{
             const gate=kind==='gate',y=gate?1.46:.335;
-            if(gate)for(const s of [-1,1])piece(g,box,0x60442f,s*.71,.92,0,.16,1.84,.34);
-            piece(g,box,0x986348,0,y,0,1.56,.67,.45);
-            for(const x of [-.46,0,.46])piece(g,box,0xf3bc66,x,y,.237,.24,.24,.045).rotation.z=Math.PI/4;
+            if(gate)for(const s of [-1,1])piece(g,pole,0x654936,s*.71,.92,0,.18,1.84,.18);
+            for(const dy of [-.15,.13]){
+                piece(g,pole,0x995c38,0,y+dy,0,.36,1.58,.36).rotation.z=Math.PI/2;
+                for(const side of [-1,1]){
+                    piece(g,pole,0xefc990,side*.59,y+dy,0,.38,.075,.38).rotation.z=Math.PI/2;
+                }
+            }
+            piece(g,box,0xe9b26b,0,y,.17,.18,.18,.04).rotation.z=Math.PI/4;
         }
         scene.add(g);return g;
     }
@@ -281,13 +355,19 @@ export function createTempleScene(canvas) {
             shotTarget.set(.04+focus*1.40,.91-.44*trip*(1-focus),-.40+focus*(chase.lead+.41));
             camera.lookAt(shotDirection.lerp(shotTarget,1-follow));
         }
-        const fallShot = p.fallen + p.kneeling;
-        if(state==='playing' && fallShot>0){
+        if(state==='playing' && p.impact){
+            const fallShot=Math.sin(Math.PI*p.impact.phase)**2;
             camera.getWorldDirection(shotDirection);
             shotDirection.multiplyScalar(5).add(camera.position);
             const side=p.lane<0 ? 1 : -1;
-            camera.position.lerp(shotPosition.set(p.x+side*(2.35+narrow),1.75,1.65),fallShot);
+            camera.position.lerp(shotPosition.set(p.x+side*(1.65+.4*narrow),1.9,chaseDepth-.75),fallShot);
             camera.lookAt(shotDirection.lerp(shotTarget.set(p.x-.16,.50,0),fallShot));
+        }
+        if(p.drop){
+            const follow=T.MathUtils.smoothstep(p.drop.phase,0,.9)*(1-menu);
+            camera.position.y-=.48*follow;
+            camera.getWorldDirection(shotDirection).multiplyScalar(5).add(camera.position);
+            camera.lookAt(shotDirection.lerp(shotTarget.set(p.x,Math.max(-2.1,p.y+.62),0),follow*.85));
         }
         if(chase.hold>0 && state!=='start'){
             const closeUp=T.MathUtils.smoothstep(chase.hold,0,1.12);
@@ -327,7 +407,9 @@ export function createTempleScene(canvas) {
             next.visible=true;next.userData.approach.visible=false;
             next.position.set(end.x,0,end.z);next.rotation.y=-end.heading;
         }else if(landscapes.has(nextCourse))landscapes.get(nextCourse).visible=false;
-        const origin=trackPoint(course,distance),cs=Math.cos(origin.heading),sn=Math.sin(origin.heading);
+        const origin=viewPoint(course,distance,chase,p),cs=Math.cos(origin.heading),sn=Math.sin(origin.heading);
+        sky.rotation.y=origin.heading;
+        ripples.origin.value.set(origin.x,origin.z);ripples.heading.value.set(cs,sn);
         route.rotation.y=origin.heading;
         route.position.set(-cs*origin.x-sn*origin.z,0,sn*origin.x-cs*origin.z);
         function place(obj,d,x,y){
@@ -339,10 +421,13 @@ export function createTempleScene(canvas) {
         grip.visible=p.riding || distance<course.cable.at+1;
         place(grip,gripAt,course.cable.lane*1.55,cableHeight(course.cable,gripAt));
         const behind=.8+chase.lead;
-        place(beastFrame,distance-behind,0,0);
+        beastFrame.visible=!chase.failure && !openSpan(course,distance-behind);
+        place(beastFrame,distance-behind,chase.x,0);
+        beastFrame.translateX(-chase.x);
         beastFrame.translateZ(-behind);
         const bite=posePursuer(state,p,t,chase);
         const runnerPosition=poseRunner(state,strideDistance,p,t,menu,chase.stumble,bite,chase.hold,chase.intro);
+        shadow.visible=!openSpan(course,distance) && !chase.failure;
         shadow.position.set(runnerPosition.x,.018,.02+runnerPosition.z);shadow.scale.set(.37,.48,1);
         for(const [e,obj] of objects)if(!entities.includes(e)){obj.visible=false;free[e.kind].push(obj);objects.delete(e);}
         for(const e of entities){
