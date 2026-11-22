@@ -260,7 +260,7 @@ export function createScene(canvas, laneWidth) {
         const [px,py]=project(x,0,z),scale=focal/z;
         ellipse('#3e40474d',px,py,scale*.78,scale*.20);
         ctx.drawImage(capture,frame%8*384,Math.floor(frame/8)*256,384,256,
-            px-2.1*scale,py-2.1*scale,4.2*scale,2.8*scale);
+            px-2.625*scale,py-2.45*scale,5.25*scale,3.50*scale);
     }
     function caveWall(face,origin){
         // Clip a facet when the camera crosses it at the cave entrance.
@@ -276,14 +276,13 @@ export function createScene(canvas, laneWidth) {
         }
         if(clipped.length>=3)polygon('#'+face.color.toString(16),clipped.map(p=>project(...p)));
     }
-    function beast(x,z,distance,awake=1){
+    function beast(x,z,distance,wake){
         if(!ridgeback.naturalWidth)return;
         const [px,py]=project(x,0,z),scale=focal/z;
-        const phase=Math.floor(distance*2.28/(Math.PI*2)*8)%8;
+        const phase=wake==null ? Math.floor(distance*2.28/(Math.PI*2)*8)%8 : Math.round(wake*7);
         ellipse('#3e40474d',px,py,scale*.52,scale*.18);
-        const height=scale*(.54+.46*awake);
-        ctx.drawImage(ridgeback,phase*240,0,240,224,px-scale*1.34,py-height*1.70,
-            scale*2.68,height*2.50);
+        ctx.drawImage(ridgeback,phase*240,wake==null?0:224,240,224,px-scale*1.50,py-scale*1.85,
+            scale*3.00,scale*2.80);
     }
     function runner(player,distance,active,stumble,z,hasGround) {
         const scale=focal/z, x=center+player.x*scale,ground=horizon+2.9*scale;
@@ -291,7 +290,7 @@ export function createScene(canvas, laneWidth) {
         const grip=rider.naturalWidth?(player.grip||0):0;
         if(grip>.001){
             ctx.save();ctx.globalAlpha=grip;
-            ctx.drawImage(rider,x-.8*scale,ground-(player.y+2.13)*scale,1.6*scale,2.24*scale);
+            ctx.drawImage(rider,x-.96*scale,ground-(player.y+2.354)*scale,1.92*scale,2.688*scale);
             ctx.restore();
             if(grip>.999)return;
         }
@@ -326,7 +325,7 @@ export function createScene(canvas, laneWidth) {
             ctx.scale(mirror,1);
             ctx.globalAlpha=weight*(1-grip);
             ctx.drawImage(actions,Math.round(u*19)*176,actionRow*154,176,154,
-                -1.36*scale,-2.08*scale,2.72*scale,2.38*scale);
+                -1.76*scale,-2.43*scale,3.52*scale,3.08*scale);
         }
         ctx.restore();
     }
@@ -437,7 +436,7 @@ export function createScene(canvas, laneWidth) {
         }
         if(state!=='start' && !gripped){
             const z=8+pullback-(.8+chase.lead+chase.stumble*.48);
-            if(z>1.5 && !chase.failure && !openSpan(course,distance+z-runnerDepth))items.push({z,draw:()=>beast(chase.x,z,chase.stride,opening?chase.wake:1)});
+            if(z>1.5 && !chase.failure && !openSpan(course,distance+z-runnerDepth))items.push({z,draw:()=>beast(chase.x,z,chase.stride,opening && chase.intro<5.65 ? chase.wake : null)});
         }
         items.sort((a,b)=>b.z-a.z).forEach(item=>item.draw());
         const shade=ctx.createLinearGradient(0,0,portrait?0:w,portrait?h:0);

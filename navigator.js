@@ -21,21 +21,36 @@ function surface(columns,rows,sample){
 export function createNavigatorHead(neck){
     const texture=new T.TextureLoader().load('./assets/navigator-face.webp');
     texture.colorSpace=T.SRGBColorSpace;texture.anisotropy=4;
-    const head=surface(48,34,(a,v)=>{
-        const sin=Math.sin(a),cos=Math.cos(a);
-        const jaw=T.MathUtils.smoothstep(v,-.07,.34);
-        const width=.061+.051*jaw+.005*Math.sin(Math.PI*v);
-        const crown=1-.66*T.MathUtils.smoothstep(v,.71,1);
-        const x=sin*width*crown;
-        const front=Math.max(0,cos);
+    // Follow the underside of the mandible back into the throat. Each station
+    // gives height, half width, front and rear depth in the head's own space.
+    const sections=[
+        [0,.018,-.055,-.025],[.035,.053,-.084,.008],[.095,.073,-.095,.052],
+        [.18,.087,-.101,.068],[.29,.100,-.101,.090],[.42,.111,-.103,.108],
+        [.54,.114,-.100,.114],[.66,.111,-.101,.118],[.79,.106,-.097,.110],
+        [.9,.086,-.084,.096],[1,.027,-.028,.052]
+    ];
+    const profile=new T.CatmullRomCurve3(sections.map(([,width,front,back])=>
+        new T.Vector3(width,front,back)),false,'catmullrom',.38);
+    function headSection(v){
+        let i=0;
+        while(i<sections.length-2 && v>sections[i+1][0])i++;
+        const t=(v-sections[i][0])/(sections[i+1][0]-sections[i][0]);
+        return profile.getPoint((i+t)/(sections.length-1));
+    }
+    const head=surface(72,54,(a,v)=>{
+        const {x:width,y:front,z:back}=headSection(v);
+        const cos=Math.cos(a),x=Math.sin(a)*width;
         const bulge=(cx,cy,rx,ry)=>Math.exp(-(((x-cx)/rx)**2+((v-cy)/ry)**2));
-        const sculpt=.022*bulge(0,.52,.015,.13)+.032*bulge(0,.365,.023,.066)
-            +.012*bulge(.021,.345,.014,.044)+.012*bulge(-.021,.345,.014,.044)
-            +.010*bulge(0,.22,.041,.06)+.012*bulge(0,.08,.046,.08)
-            +.009*bulge(.066,.43,.031,.12)+.009*bulge(-.066,.43,.031,.12)
-            -.008*bulge(.044,.55,.026,.055)-.008*bulge(-.044,.55,.026,.055);
-        const z=.004-.104*Math.sign(cos)*Math.abs(cos)**.73*(.67+.33*jaw)*crown-front**3*sculpt;
-        return [x,v*.298-.012+Math.max(0,-cos)*.062*(1-v)**2,z];
+        const pair=(cx,cy,rx,ry)=>bulge(cx,cy,rx,ry)+bulge(-cx,cy,rx,ry);
+        const relief=.023*bulge(0,.49,.017,.135)+.031*bulge(0,.38,.022,.061)
+            +.014*pair(.022,.363,.013,.035)+.008*bulge(0,.247,.043,.038)
+            +.008*bulge(0,.194,.040,.028)+.012*bulge(0,.12,.043,.065)
+            +.014*pair(.070,.443,.034,.095)-.009*pair(.047,.532,.028,.051)
+            +.008*pair(.046,.612,.038,.047);
+        const z=(front+back)/2-(back-front)/2*Math.sign(cos)*Math.abs(cos)**.86
+            -Math.max(0,cos)**2*relief;
+        const y=v*.298-.012+.014*(1-v)**12+(.5-.5*cos)*.045*(1-v)**3;
+        return [x,y,z];
     });
     const face=new T.Mesh(head,new T.MeshStandardMaterial({map:texture,roughness:.92}));
     face.castShadow=true;neck.add(face);
@@ -45,9 +60,15 @@ export function createNavigatorHead(neck){
         const c=Math.cos(a),s=Math.sin(a),t=v*Math.PI*.5;
         const wave=Math.sin(13*a+6*v+1.9*Math.sin(3*a+3*v));
         const radius=Math.cos(t)**.66*(1+.022*wave);
-        const line=.156+.072*c+.011*Math.sin(a*2+.5)-.015*Math.exp(-((a-.37)**2)/.045);
+        const line=.171+.072*c+.006*Math.sin(a*2+.5)-.010*Math.exp(-((a-.37)**2)/.045);
         const y=line+(.329-line)*Math.sin(t)+.0015*wave*radius;
-        return [.121*s*radius+.007*v,y,.014-.128*c*radius+.028*v,
+        // Draw the short hairs in against the skull at the temples and nape.
+        const edgeFit=1-T.MathUtils.smoothstep(v,0,.32);
+        const h=headSection(T.MathUtils.clamp((y+.012)/.298,0,1));
+        const hairX=s*(h.x+.002);
+        const hairZ=(h.y+h.z)/2-((h.z-h.y)/2+.002)*Math.sign(c)*Math.abs(c)**.86;
+        return [T.MathUtils.lerp(.121*s*radius+.007*v,hairX,edgeFit),y,
+            T.MathUtils.lerp(.014-.128*c*radius+.028*v,hairZ,edgeFit),
             hairInk.clone().lerp(hairLight,(.5+.5*wave)*(.34+.32*v))];
     }
     const cap=surface(84,22,hairSurface);

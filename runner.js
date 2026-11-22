@@ -1,4 +1,5 @@
 import * as T from './vendor/three.module.min.js';
+import {paintedMaterial} from './character-material.js';
 import {createNavigatorHead} from './navigator.js';
 import {ease,impactPose} from './motion.js';
 
@@ -6,7 +7,7 @@ import {ease,impactPose} from './motion.js';
 export function createRunner(scene) {
     const root = new T.Group();
     scene.add(root);
-    const skin = 0xb97755, cloth = 0x176465, band = 0xe2b568;
+    const skin = 0xb97755, band = 0xe2b568;
     const sphere = new T.SphereGeometry(1, 18, 14);
     const materials = new Map();
     function material(color) {
@@ -70,10 +71,10 @@ export function createRunner(scene) {
     }
     const hips=joint(root),spine=joint(hips),neck=joint(spine,0,.61,-.018);
     neck.scale.setScalar(1.075);
-    const armorGrip=joint(spine,0,.43,.178),gripPosition=new T.Vector3();
+    const armorGrip=joint(spine,-.12,.439,.202),gripPosition=new T.Vector3();
     // Wraparound woven panels share a small local texture. The larger bands
     // stay legible from the chase camera; the fine fibre shows in the menu.
-    function weave(base, reed, trim, printed=false) {
+    function weave(base, reed, trim) {
         const tile=document.createElement('canvas');
         tile.width=512;tile.height=256;
         const g=tile.getContext('2d');
@@ -87,22 +88,6 @@ export function createRunner(scene) {
             g.stroke();
         }
         g.globalAlpha=1;
-        if(printed){
-            // A bold block print reads from the chase camera; the fibres
-            // underneath only become visible in the character close-up.
-            for(const x of [68,444]){
-                g.fillStyle=trim;g.fillRect(x,0,10,256);
-                g.fillStyle=reed;g.fillRect(x+16,0,13,256);
-            }
-            g.lineJoin='round';
-            for(let j=0;j<3;j++){
-                const y=48+j*70;
-                g.beginPath();g.moveTo(132,y);g.lineTo(252,y+31);g.lineTo(373,y);
-                g.strokeStyle=trim;g.lineWidth=15;g.stroke();
-                g.beginPath();g.moveTo(190,y);g.lineTo(252,y-16);g.lineTo(314,y);
-                g.lineTo(252,y+16);g.closePath();g.fillStyle=reed;g.fill();
-            }
-        }
         for(const y of [8,207]){
             g.fillStyle=trim;g.fillRect(0,y,512,3);g.fillRect(0,y+31,512,3);
             g.fillStyle=reed;
@@ -115,8 +100,8 @@ export function createRunner(scene) {
         return new T.MeshStandardMaterial({map,roughness:.91,side:T.DoubleSide});
     }
     const coir=weave('#73503e','#ae8056','#e9cb9b');
-    const mantle=weave('#15595b','#42988c','#ecd298');
-    const sash=weave('#a94032','#e89155','#ffdf9c',true);
+    const mantle=paintedMaterial('navigator-mantle',.91);mantle.side=T.DoubleSide;
+    const sash=paintedMaterial('navigator-sash',.88);sash.side=T.DoubleSide;
     // Bias-cut fabric follows the back surface from shoulder to opposite hip.
     function panel(parent,rows,mat){
         const vertices=[],uv=[],indices=[];
@@ -159,17 +144,16 @@ export function createRunner(scene) {
         const obj=new T.Mesh(flat,mat);
         obj.castShadow=true;parent.add(obj);return obj;
     }
-    // High-neck underlayer closes the collar and the arm openings as the
-    // shoulder girdle rotates independently of the hips.
-    mesh(spine,profile([[-.085,.18,.15],[.15,.16,.13],[.40,.236,.15],
-        [.49,.253,.145],[.545,.16,.106],[.592,.081,.075],[.608,.070,.068]]),cloth);
-    oval(spine,skin,0,.62,-.012,.067,.088,.067);
-    garment(spine,[[-.015,.189,.168],[.09,.181,.149],[.20,.181,.143],
-        [.32,.216,.169],[.43,.256,.173],[.485,.263,.157],[.52,.222,.14],
-        [.557,.15,.112],[.576,.09,.087]],coir);
-    // Dyed shoulder yoke and a shell clasp on the collar.
-    garment(spine,[[.378,.251,.183],[.415,.263,.185],[.47,.271,.177],
-        [.508,.244,.158],[.55,.17,.124],[.582,.09,.09]],mantle);
+    const tunic=garment(spine,[[-.028,.192,.172],[.07,.187,.158],[.17,.18,.148],
+        [.27,.205,.157],[.35,.232,.173],[.408,.246,.179],[.449,.252,.176],
+        [.48,.25,.165]],mantle);
+    // Let the collar rise under the shoulder sash and dip below the bare arm.
+    const edge=tunic.geometry.attributes.position;
+    for(let i=0;i<edge.count;i++){
+        const x=edge.getX(i),y=edge.getY(i);
+        const w=T.MathUtils.smoothstep(y,.28,.48);
+        edge.setY(i,y-w*(.045+.073*x/.25));
+    }
     shellClasp(-.086,.385,-.202,-1);
     const wrap=garment(hips,[[-.244,.244,.206],[-.20,.24,.201],[-.10,.221,.182],
         [.016,.198,.173],[.08,.181,.153]],mantle);
@@ -191,11 +175,31 @@ export function createRunner(scene) {
         [.011,-.34,.115,.094,.017],[-.022,-.455,.139,.069,.038]],sash);
     shellClasp(-.12,.416,.195,1);
 
+    // The flask sits behind the opposite hip, clear of the swinging hand.
+    const flask=joint(hips,-.158,.012,.126);
+    flask.rotation.z=-.22;
+    mesh(flask,profile([[-.148,.023,.021],[-.138,.057,.046],[-.106,.071,.052],
+        [-.064,.068,.05],[-.034,.049,.039],[-.015,.025,.023],[.006,.019,.019],[.021,.024,.022]]),0x995b36);
+    garment(flask,[[-.117,.068,.052],[-.094,.074,.055],[-.079,.071,.054]],coir);
+    oval(flask,0xd5b886,0,.026,0,.019,.024,.017);
+    function cord(parent,points,radius,color){
+        const path=new T.CatmullRomCurve3(points.map(p=>new T.Vector3(...p)));
+        return mesh(parent,new T.TubeGeometry(path,16,radius,5,false),color);
+    }
+    cord(flask,[[-.036,-.036,.015],[-.050,.026,.004],[0,.061,-.013],[.04,.018,.013],[.039,-.052,.032]],.006,0xd5ae78);
+    cord(spine,[[-.075,.561,-.045],[-.073,.532,-.111],[0,.477,-.164],[.085,.526,-.111],[.078,.56,-.04]],.005,0x765037);
+    const pendant=mesh(spine,new T.LatheGeometry([[0,-.033],[.014,-.014],[.021,.006],[.013,.021],[.005,.026],[0,.026]]
+        .map(([r,y])=>new T.Vector2(r,y)),12),0x438a7e);
+    pendant.position.set(0,.454,-.169);pendant.scale.z=.48;
     const knot=createNavigatorHead(neck);
     for(const side of [-1,1]){
-        oval(neck,skin,side*.11,.137,.009,.021,.038,.020);
-        oval(neck,0xa25d46,side*.123,.138,.008,.009,.022,.012);
-        oval(neck,band,side*.123,.107,.006,.008,.012,.008);
+        const ear=joint(neck,side*.107,.143,.005);
+        ear.rotation.x=.16;
+        oval(ear,skin,side*.003,0,0,.018,.033,.019);
+        oval(ear,0xb47456,side*.016,.001,.001,.0035,.019,.011);
+        cord(ear,[[side*.014,-.018,.007],[side*.020,-.002,.015],[side*.021,.022,.012],
+            [side*.016,.028,-.001],[side*.012,.017,-.013]],.004,skin);
+        oval(ear,band,side*.014,-.028,-.003,.005,.006,.005);
     }
     const tie=joint(knot,.036,-.022,.049);
     panel(tie,[[0,0,0,.018,.001],[.015,-.067,.029,.022,.003],[.022,-.125,.041,.014,.010]],sash);
@@ -215,12 +219,12 @@ export function createRunner(scene) {
         const foot=joint(leg.bend,0,-calf);
         oval(foot,skin,0,-.007,-.054,.057,.049,.113);
         oval(foot,0x594632,0,-.041,-.058,.061,.022,.128);
-        oval(foot,0x8a643f,0,.012,-.073,.06,.032,.026);
+        for(const side of [-1,1])
+            cord(foot,[[side*.052,-.025,-.092],[side*.032,.028,-.076],[-side*.026,.032,-.044],[-side*.051,-.02,-.025]],.008,0xb48753);
         const arm=limb(spine,s*.222,.477,.273,[
             [-.517,.032,.034],[-.467,.037,.04],[-.397,.049,.058],[-.345,.059,.064],
             [-.305,.051,.051],[-.273,.047,.05,.009],[-.235,.049,.061,.006],
-            [-.177,.065,.088,.005],[-.132,.071,.091],[-.095,.066,.078],
-            [-.057,.084,.088],[-.012,.089,.085],[.025,.074,.071],[.055,.047,.05],[.069,.009,.013]
+            [-.177,.065,.088,.005],[-.132,.071,.091]
         ]);
         const wrist=joint(arm.bend,0,-.249);
         oval(wrist,skin,0,-.032,0,.032,.048,.041);
@@ -238,6 +242,66 @@ export function createRunner(scene) {
             s<0?sash:mantle);
         return {s,leg,foot,arm,wrist};
     });
+    // A single skinned shoulder girdle joins the neck, chest and deltoids.
+    // Its two armholes grow into sleeves that rotate with the upper arms.
+    const chest=[
+        [-.08,.173,.144],[.16,.169,.13],[.32,.208,.149],[.386,.229,.161],
+        [.416,.237,.166],[.455,.248,.161],[.49,.24,.145],[.523,.200,.123],
+        [.55,.136,.099],[.578,.084,.082],[.631,.070,.071,-.004],[.672,.066,.063,-.006],
+        [.707,.063,.055,-.008],[.731,.045,.036,-.010]
+    ];
+    const sides=40, bottom=3, top=7, arc=4;
+    const vertices=[],triangles=[],boneIndices=[],boneWeights=[];
+    function vertex(x,y,z,bone=0,weight=0){
+        vertices.push(x,y,z);boneIndices.push(0,bone,0,0);boneWeights.push(1-weight,weight,0,0);
+        return vertices.length/3-1;
+    }
+    function index(row,column){return row*sides+(column+sides)%sides;}
+    for(const [i,[y,rx,rz,cz=0]] of chest.entries()){
+        for(let j=0;j<sides;j++){
+            const angle=j*2*Math.PI/sides;
+            vertex(rx*Math.cos(angle),y,cz+rz*Math.sin(angle));
+            const edge=(j+arc)%(sides/2);
+            if(!i || (i>bottom && i<=top && edge<2*arc))continue;
+            const a=index(i-1,j),b=index(i,j),c=index(i-1,j+1),d=index(i,j+1);
+            triangles.push(a,b,c,c,b,d);
+        }
+    }
+    limbs.forEach(({s,arm},armIndex)=>{
+        const center=s>0?0:sides/2,boundary=[];
+        for(let j=-arc;j<arc;j++)boundary.push([bottom,j]);
+        for(let row=bottom;row<top;row++)boundary.push([row,arc]);
+        for(let j=arc;j>-arc;j--)boundary.push([top,j]);
+        for(let row=top;row>bottom;row--)boundary.push([row,-arc]);
+        let previous=boundary.map(([row,j])=>index(row,center+j));
+        for(let ring=1;ring<=5;ring++){
+            const t=ring/5,bulge=Math.sin(Math.PI*t);
+            const next=boundary.map(([row,j])=>{
+                const base=index(row,center+j)*3;
+                const [x,y,z]=vertices.slice(base,base+3);
+                const angle=Math.atan2(j/arc,2*(chest[row][0]-chest[bottom][0])/(chest[top][0]-chest[bottom][0])-1);
+                const outer=Math.cos(angle),depth=s*Math.sin(angle);
+                const endX=arm.anchor.position.x+s*.071*outer,endY=arm.anchor.position.y-.134;
+                return vertex(x+(endX-x)*t+s*.031*bulge*Math.max(0,outer),
+                    y+(endY-y)*t+.032*bulge*Math.max(0,outer),
+                    z+(.090*depth-z)*t+.012*bulge*depth,armIndex+1,T.MathUtils.smootherstep(t,0,1));
+            });
+            for(let j=0;j<next.length;j++){
+                const k=(j+1)%next.length;
+                triangles.push(previous[j],next[j],previous[k],previous[k],next[j],next[k]);
+            }
+            previous=next;
+        }
+    });
+    const upperBody=new T.BufferGeometry();
+    upperBody.setAttribute('position',new T.Float32BufferAttribute(vertices,3));
+    upperBody.setAttribute('skinIndex',new T.Uint16BufferAttribute(boneIndices,4));
+    upperBody.setAttribute('skinWeight',new T.Float32BufferAttribute(boneWeights,4));
+    upperBody.setIndex(triangles);upperBody.computeVertexNormals();
+    const shoulders=new T.SkinnedMesh(upperBody,material(skin));
+    spine.add(shoulders);spine.updateWorldMatrix(true,true);
+    shoulders.bind(new T.Skeleton([spine,...limbs.map(l=>l.arm.anchor)]));
+    shoulders.castShadow=true;shoulders.frustumCulled=false;
     let lastTime=0,airborne=false,impact=0;
     const mix=T.MathUtils.lerp;
     return function pose(state,distance,p,t,menu,stumble=0,bite=null,hold=0,intro=0){
@@ -301,6 +365,7 @@ export function createRunner(scene) {
         knot.rotation.x=.08*Math.sin(angle*2)*travel;
         tails.rotation.x=-.16-.58*travel-.18*air-.12*Math.sin(angle)*travel;
         tails.rotation.z=.13*Math.sin(angle*.5)*travel+(pivot?.lean||0)*.35;
+        flask.rotation.x=-.06+.13*Math.sin(angle-.6)*travel+.14*air;
         tie.rotation.x=-.22-.35*travel+.12*Math.sin(angle)*travel;
         for(const {s,leg,foot,arm,wrist} of limbs){
             const phase=(cycle+(s>0?.5:0))%1;
