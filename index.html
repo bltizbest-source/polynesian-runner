@@ -12,7 +12,7 @@
   <canvas id="world" aria-label="A winding three-lane course with obstacles, gems and a zipline"></canvas>
 </div>
 <aside class="hud" aria-label="Run statistics">
-  <div class="stats"><span id="lead-hud" hidden>Lead <b id="lead">5 m</b></span><span id="live" hidden>Score <b id="score">0</b></span><span>Best <b id="best">0</b></span></div>
+  <div class="stats"><span id="lead-hud" hidden>Lead <b id="lead">5 m</b></span><span id="live" hidden>Score <b id="score">0</b></span><span><span id="best-label">Best</span> <b id="best">0</b></span></div>
   <span id="route-hud" hidden></span>
   <span id="hit" role="status" hidden>Hit · −10 m</span>
 </aside>
@@ -49,7 +49,7 @@ document.getElementById('help').addEventListener('click', () => guide.showModal(
 try {
     const {fitGameScreen} = await import('./viewport.js?v=35');
     fitGameScreen();
-    const {initializeGame} = await import('./game.js?v=36');
+    const {initializeGame} = await import('./game.js?v=37');
     await initializeGame();
 } catch (error) {
     console.error('Game startup failed', error);

@@ -13,8 +13,23 @@ function useCanvasRenderer() {
 const el = id => document.getElementById(id);
 const storageKey = 'polynesianRunnerHighScore';
 let best = 0;
-try { best = Math.max(0, Number(localStorage.getItem(storageKey)) || 0); } catch {}
-el('best').textContent = best;
+function syncBest(candidate = 0) {
+    best = Math.max(best, candidate);
+    try {
+        const value = Number(localStorage.getItem(storageKey));
+        const saved = Number.isSafeInteger(value) && value >= 0 ? value : 0;
+        if (best > saved) localStorage.setItem(storageKey, String(best));
+        else best = saved;
+        el('best-label').textContent = 'Best';
+    } catch {
+        el('best-label').textContent = 'Best (this session)';
+    }
+    el('best').textContent = best;
+}
+syncBest();
+window.addEventListener('storage', event => { if (event.key === storageKey) syncBest(); });
+window.addEventListener('pageshow', () => syncBest());
+window.addEventListener('pagehide', () => syncBest());
 
 let state = 'start', distance = 0, score = 0, level = 0;
 let entities=[], upcoming=[], startingLevel=0, time=0, menuBlend=1;
@@ -98,11 +113,6 @@ function end() {
     state = 'over';
     document.body.dataset.state = state;
     clearInput();
-    if (score > best) {
-        best = score;
-        try { localStorage.setItem(storageKey, best); } catch {}
-    }
-    el('best').textContent = best;
     el('hit').hidden = true;
     el('live').hidden = true;
     el('lead-hud').hidden = true;
@@ -401,6 +411,7 @@ function frame(now) {
     } else if (state === 'playing') {
         const steps = Math.max(1,Math.ceil(dt*90));
         for(let i=0;i<steps && state==='playing';i++) advance(dt/steps);
+        if (score > best) syncBest(score);
     } else if(state==='catching') advanceCapture(dt);
     else if(state==='falling') advanceFall(dt);
     if(state==='playing'||state==='catching'){
