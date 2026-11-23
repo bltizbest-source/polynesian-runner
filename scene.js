@@ -1,5 +1,6 @@
+import {seaLevel,surfaceHeight,forEachSplashDrop} from './water.js';
 import {courses,routePoint,cableHeight,openSpan,viewPoint} from './courses.js';
-import {renderPixelRatio} from './viewport.js';
+import {renderPixelRatio} from './viewport.js?v=35';
 import {ease} from './motion.js';
 import {caveFaces,tripStoneAt} from './cave.js';
 // World units are metres. The camera looks along +z, with the runner at z = 8.
@@ -46,7 +47,7 @@ export function createScene(canvas, laneWidth) {
         colors.forEach(([n,c])=>g.addColorStop(n,c));
         return g;
     }
-    let course, origin, cameraAt, runnerDepth;
+    let course, origin, cameraAt, runnerDepth, waterTime;
     const sections=new Map();
     function project(x,y,z) {
         let row=sections.get(z);
@@ -94,8 +95,53 @@ export function createScene(canvas, laneWidth) {
         ctx.restore();
     }
 
-    function landscape(t) {
-        const [lagoon,lava,fern,cliffs,plains,falls]=courses.map(c=>course===c);
+    function drawWater(t,splash) {
+        const cs=Math.cos(origin.heading),sn=Math.sin(origin.heading);
+        const bottomDepth=Math.max(.4,focal*(2.9-seaLevel)/(h-horizon));
+        ctx.save();
+        ctx.lineCap='round';
+        // Perspective rows sample the same travelling waves used for water contact.
+        for(let row=0;row<26;row++){
+            const depth=bottomDepth*Math.pow(80/bottomDepth,row/25);
+            const scale=focal/depth, z=runnerDepth-depth;
+            ctx.lineWidth=Math.max(.65,.036*scale);
+            ctx.beginPath();
+            let crest=false;
+            for(let col=0;col<=40;col++){
+                const px=w*col/40,x=(px-center)/scale;
+                const height=surfaceHeight(origin.x+cs*x-sn*z,origin.z+sn*x+cs*z,t);
+                const py=horizon+(2.9-height)*scale;
+                if(height>seaLevel+.05 && crest)ctx.lineTo(px,py);
+                else ctx.moveTo(px,py);
+                crest=height>seaLevel+.05;
+            }
+            ctx.strokeStyle=row%3?'#ccf0dc70':'#ffe2aa88';ctx.stroke();
+        }
+        if(splash){
+            const age=t-splash.time;
+            if(age>=0 && age<2.6){
+                const dx=splash.x-origin.x,dz=splash.z-origin.z;
+                const depth=runnerDepth+sn*dx-cs*dz,scale=focal/Math.max(1,depth);
+                const px=center+(cs*dx+sn*dz)*scale;
+                const height=surfaceHeight(splash.x,splash.z,t);
+                const py=horizon+(2.9-height)*scale;
+                ctx.globalAlpha=Math.min(1,splash.strength)*Math.exp(-1.4*age);
+                ctx.strokeStyle='#e3fff1';ctx.lineWidth=Math.max(1,.09*scale);
+                ctx.beginPath();ctx.ellipse(px,py,(.08+2.8*age)*scale,(.08+2.8*age)*scale*Math.min(.65,(2.9-height)/depth),0,0,tau);ctx.stroke();
+            }
+        }
+        ctx.globalAlpha=1;
+        forEachSplashDrop(splash,t,(x,y,z,radius)=>{
+            const dx=x-origin.x,dz=z-origin.z;
+            const scale=focal/Math.max(1,runnerDepth+sn*dx-cs*dz);
+            ellipse('#d8f4ea',center+(cs*dx+sn*dz)*scale,horizon+(2.9-y)*scale,
+                radius*scale,1.65*radius*scale);
+        });
+        ctx.restore();
+    }
+
+    function landscape(t,splash) {
+        const [,lava,fern,cliffs,plains,falls]=courses.map(c=>course===c);
         const sunX=center+w*.105,r=h*.095;
         if(backdrop.naturalWidth){
             const width=Math.max(w,1.8*focal),height=width*backdrop.naturalHeight/backdrop.naturalWidth;
@@ -112,11 +158,7 @@ export function createScene(canvas, laneWidth) {
         }
         ctx.fillStyle=gradient(horizon,h,[[0,'#'+course.fog.toString(16)],[.3,'#'+course.water.toString(16)],[1,'#182e32']]);
         ctx.fillRect(0,horizon,w,h-horizon);
-        for(let i=0;(lagoon || cliffs) && i<170;i++){
-            const depth=((i*.61803+t*.019)%1)**2;
-            const x=((i*.38291)%1)*w,y=horizon+depth*(h-horizon);
-            ellipse(Math.abs(x-sunX)<r*(.4+depth)?'#f9d39699':'#c3e0c54d',x,y,w*(.002+depth*.019),.5+depth*h*.0017);
-        }
+        drawWater(t,splash);
         for(const [side,offset,depth] of [[-1,.56,.11],[1,.47,.075],[-1,.25,.028],[1,.28,.034]]){
             const x=center+side*w*offset,y=horizon+h*depth,s=h*(depth+.012);
             ellipse('#b5c4a2',x,y,s*2.1,s*.09);
@@ -315,6 +357,10 @@ export function createScene(canvas, laneWidth) {
             }
         }
         ctx.save();
+        if(player.drop?.splash){
+            const wx=origin.x+Math.cos(origin.heading)*player.x,wz=origin.z+Math.sin(origin.heading)*player.x;
+            ctx.beginPath();ctx.rect(0,0,w,ground-surfaceHeight(wx,wz,waterTime)*scale);ctx.clip();
+        }
         ctx.translate(x,ground-(player.y+.26*player.fallen)*scale);
         ctx.rotate((player.laneVelocity||0)*.012+stumble*.61+player.fallen*1.48+player.kneeling*.14);
         if(weight<1){
@@ -345,7 +391,8 @@ export function createScene(canvas, laneWidth) {
         const pullback=focus*1.8;
         const roadDistance=32+strideDistance-pullback;
         course=selectedCourse;origin=viewPoint(course,distance,chase,player);cameraAt=distance;runnerDepth=8+pullback;
-        sections.clear();landscape(time);road();
+        waterTime=time;
+        sections.clear();landscape(time,player.drop?.splash);road();
         const items=[];
         if(foliage.naturalWidth){
             const index=courses.indexOf(course);

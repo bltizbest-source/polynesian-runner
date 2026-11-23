@@ -1,8 +1,9 @@
 import {courses,trackPoint,routePoint,cableHeight,viewPoint,openSpan} from './courses.js';
-import {renderPixelRatio} from './viewport.js';
+import {seaLevel,forEachSplashDrop} from './water.js';
+import {renderPixelRatio} from './viewport.js?v=35';
 import * as T from './vendor/three.module.min.js';
 import {caveFaces,tripStoneAt} from './cave.js';
-import {paintedFlora,palmFrond,coastalStone,trailMaterial,waterMaterial} from './island-art.js';
+import {paintedFlora,palmFrond,coastalStone,trailMaterial,waterMaterial} from './island-art.js?v=35';
 import {createRunner} from './runner.js';
 import {createPursuer} from './pursuer.js';
 
@@ -243,7 +244,20 @@ export function createTempleScene(canvas) {
         obj.position.set(x,y,z);obj.scale.set(sx,sy,sz);parent.add(obj);return obj;
     }
     const ripples=waterMaterial(sprayTime);
-    const water=new T.Mesh(box,ripples.mat);water.scale.set(320,.25,310);water.position.set(0,-1.03,-56);water.receiveShadow=true;scene.add(water);
+    // Concentrate vertices near the runner, where the swells and impact rings are visible.
+    const ocean=new T.PlaneGeometry(2,2,96,96).rotateX(-Math.PI/2);
+    const positionsXZ=ocean.attributes.position;
+    for(let i=0;i<positionsXZ.count;i++){
+        const x=positionsXZ.getX(i),z=positionsXZ.getZ(i);
+        positionsXZ.setXYZ(i,160*x*Math.abs(x),0,(z<0?211:99)*z*Math.abs(z));
+    }
+    const water=new T.Mesh(ocean,ripples.mat);
+    water.position.y=seaLevel;water.receiveShadow=true;scene.add(water);
+
+    const droplets=new T.InstancedMesh(new T.IcosahedronGeometry(1,0),
+        new T.MeshBasicMaterial({color:0xd6f5ed}),16);
+    droplets.frustumCulled=false;droplets.count=0;scene.add(droplets);
+    const dropTransform=new T.Object3D();
 
     const cave=new T.Group();
     scene.add(cave);
@@ -410,6 +424,19 @@ export function createTempleScene(canvas) {
         const origin=viewPoint(course,distance,chase,p),cs=Math.cos(origin.heading),sn=Math.sin(origin.heading);
         sky.rotation.y=origin.heading;
         ripples.origin.value.set(origin.x,origin.z);ripples.heading.value.set(cs,sn);
+        const splash=p.drop?.splash;
+        if(splash && t-splash.time<3)
+            ripples.impact.value.set(splash.x,splash.z,t-splash.time,splash.strength);
+        else ripples.impact.value.set(0,0,-1,0);
+        droplets.count=0;
+        forEachSplashDrop(splash,t,(x,y,z,radius)=>{
+            const dx=x-origin.x,dz=z-origin.z;
+            dropTransform.position.set(cs*dx+sn*dz,y,-sn*dx+cs*dz);
+            dropTransform.scale.set(radius,1.65*radius,radius);
+            dropTransform.updateMatrix();
+            droplets.setMatrixAt(droplets.count++,dropTransform.matrix);
+        });
+        if(droplets.count)droplets.instanceMatrix.needsUpdate=true;
         route.rotation.y=origin.heading;
         route.position.set(-cs*origin.x-sn*origin.z,0,sn*origin.x-cs*origin.z);
         function place(obj,d,x,y){

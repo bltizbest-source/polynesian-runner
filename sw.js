@@ -1,10 +1,10 @@
-const CACHE = 'polynesian-runner-v34';
-const urls = ['./','./index.html','./style.css?v=34','./scene.js','./navigator.js','./character-material.js','./assets/ridgeback-hide.webp','./assets/ridgeback-horn.webp','./assets/navigator-mantle.webp','./assets/navigator-sash.webp','./assets/navigator-face.webp','./assets/island-flora.webp','./island-art.js','./assets/trail-wash.webp','./assets/island-horizon.webp','./courses.js','./motion.js','./viewport.js','./cave.js','./temple.js','./runner.js','./pursuer.js','./vendor/three.module.min.js',
-    './game.js','./manifest.json','./favicon.png','./assets/temple-mark.svg','./assets/apple-touch-icon.png',
+const CACHE = 'polynesian-runner-v35';
+const urls = ['./','./index.html','./style.css?v=35','./scene.js?v=35','./navigator.js','./character-material.js','./assets/ridgeback-hide.webp','./assets/ridgeback-horn.webp','./assets/navigator-mantle.webp','./assets/navigator-sash.webp','./assets/navigator-face.webp','./assets/island-flora.webp','./island-art.js?v=35','./assets/trail-wash.webp','./assets/island-horizon.webp','./courses.js','./motion.js','./viewport.js?v=35','./water.js','./cave.js','./temple.js?v=35','./runner.js','./pursuer.js','./vendor/three.module.min.js',
+    './game.js?v=35','./manifest.json','./favicon.png','./assets/temple-mark.svg','./assets/apple-touch-icon.png',
     './assets/icon-192.png','./assets/icon-512.png','./assets/runner-poses.webp','./assets/ridgeback-poses.webp',
     './assets/runner-actions.webp','./assets/runner-zip.webp','./assets/ridgeback-grab.webp'];
 self.addEventListener('install', event => {
-    event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(urls)).then(() => self.skipWaiting()));
+    event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(urls.map(url=>new Request(url,{cache:'reload'})))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', event => {
     event.waitUntil(caches.keys().then(keys => Promise.all(keys

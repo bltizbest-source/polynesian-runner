@@ -1,7 +1,8 @@
 import {courses,courseItems,cableHeight,openSpan,runnerPoint,trackPoint} from './courses.js';
+import {surfaceHeight} from './water.js';
 import {cornerMotion} from './motion.js';
 import {tripStoneAt} from './cave.js';
-import {createScene} from './scene.js';
+import {createScene} from './scene.js?v=35';
 const canvas = document.getElementById('world');
 let draw;
 function useCanvasRenderer() {
@@ -232,8 +233,21 @@ function advanceFall(dt){
     }
     fallTime+=dt;
     player.drop.phase=Math.min(1,fallTime/.94);
-    player.velocity-=12*dt;player.y+=player.velocity*dt;
-    if(fallTime>=.94)end();
+    const point=runnerPoint(course,distance,chase.missedTurn,player.x);
+    const x=point.x+Math.cos(point.heading)*player.x, z=point.z+Math.sin(point.heading)*player.x;
+    const surface=surfaceHeight(x,z,time);
+    if(player.drop.splash){
+        // Buoyancy and drag settle the runner with the shoulders above water.
+        player.velocity+=((surface-.93-player.y)*22-player.velocity*7)*dt;
+    }else{
+        player.velocity-=12*dt;
+    }
+    player.y+=player.velocity*dt;
+    if(!player.drop.splash && player.y<=surface && player.velocity<0){
+        player.drop.splash={x,z,time,height:surface,strength:Math.min(1.4,Math.abs(player.velocity)/4.5)};
+        player.velocity*=.48;
+    }
+    if(player.drop.splash && time-player.drop.splash.time>=.72)end();
 }
 
 function advance(dt) {
@@ -364,7 +378,7 @@ function advanceCapture(dt) {
     if(chase.hold >= 1.65) end();
 }
 function frame(now) {
-    const elapsed = (now - (lastFrame ?? now)) / 1000;
+    const elapsed = Math.max(0, now - (lastFrame ?? now)) / 1000;
     const dt = Math.min(elapsed, .075);
     lastFrame = now;
     time += dt;
@@ -413,7 +427,7 @@ function frame(now) {
 }
 export async function initializeGame() {
     try {
-        const {createTempleScene} = await import('./temple.js');
+        const {createTempleScene} = await import('./temple.js?v=35');
         draw = createTempleScene(canvas);
         frame(performance.now());
         canvas.addEventListener('webglcontextlost', useCanvasRenderer, {once:true});

@@ -1,3 +1,4 @@
+import {swells} from './water.js';
 import * as T from './vendor/three.module.min.js';
 
 // A single curved leaf carries a painted silhouette, including the spaces
@@ -60,22 +61,52 @@ export function trailMaterial(loader){
 }
 
 export function waterMaterial(time){
-    const mat=new T.MeshStandardMaterial({color:0x43a8aa,roughness:.62,metalness:.07});
+    const mat=new T.MeshStandardMaterial({color:0x43a8aa,roughness:.34,metalness:.09});
     const origin={value:new T.Vector2()}, heading={value:new T.Vector2(1,0)};
+    // xy is the impact in island coordinates, z its age, and w its strength.
+    const impact={value:new T.Vector4(0,0,-1,0)};
+    const waveTerms=swells.map(({kx,kz,omega,amplitude,phase})=>
+        `addSwell(surface, p, vec2(${kx},${kz}), ${omega}, ${amplitude}, ${phase.toFixed(2)});`).join('\n');
     mat.onBeforeCompile=shader=>{
-        Object.assign(shader.uniforms,{waterTime:time,waterOrigin:origin,waterHeading:heading});
-        shader.vertexShader='varying vec2 waterPoint; uniform vec2 waterOrigin,waterHeading;\n'+shader.vertexShader.replace('#include <project_vertex>',
-            '#include <project_vertex>\n vec2 p=(modelMatrix*vec4(transformed,1.)).xz;waterPoint=waterOrigin+vec2(dot(p,vec2(waterHeading.x,-waterHeading.y)),dot(p,waterHeading.yx));');
-        shader.fragmentShader='varying vec2 waterPoint; uniform float waterTime;\n'+shader.fragmentShader.replace('#include <color_fragment>',`
+        Object.assign(shader.uniforms,{waterTime:time,waterOrigin:origin,waterHeading:heading,waterImpact:impact});
+        shader.vertexShader=`
+            varying vec2 waterPoint;
+            varying float waveHeight;
+            uniform float waterTime;
+            uniform vec2 waterOrigin,waterHeading;
+            uniform vec4 waterImpact;
+            void addSwell(inout vec3 surface,vec2 p,vec2 k,float rate,float amplitude,float offset){
+                float phase=dot(p,k)-waterTime*rate+offset;
+                surface+=amplitude*vec3(sin(phase),k*cos(phase));
+            }
+        `+shader.vertexShader.replace('#include <beginnormal_vertex>',`
+            #include <beginnormal_vertex>
+            vec2 local=(modelMatrix*vec4(position,1.)).xz;
+            vec2 p=waterOrigin+vec2(dot(local,vec2(waterHeading.x,-waterHeading.y)),dot(local,waterHeading.yx));
+            waterPoint=p;
+            vec3 surface=vec3(0.);
+            ${waveTerms}
+            vec2 delta=p-waterImpact.xy;
+            float radius=length(delta), age=waterImpact.z;
+            float front=radius-2.8*age;
+            float envelope=waterImpact.w*exp(-front*front*2.4-1.3*max(age,0.));
+            surface.x+=.14*envelope*cos(6.*front);
+            surface.yz+=.14*envelope*(-4.8*front*cos(6.*front)-6.*sin(6.*front))*delta/max(radius,.001);
+            vec2 slope=vec2(dot(surface.yz,waterHeading),dot(surface.yz,vec2(-waterHeading.y,waterHeading.x)));
+            objectNormal=normalize(vec3(-slope.x,1.,-slope.y));
+            waveHeight=surface.x;
+        `).replace('#include <begin_vertex>','#include <begin_vertex>\n transformed.y+=waveHeight;');
+        shader.fragmentShader='varying vec2 waterPoint; varying float waveHeight; uniform float waterTime; uniform vec4 waterImpact;\n'+shader.fragmentShader.replace('#include <color_fragment>',`
             #include <color_fragment>
-            vec2 p=waterPoint;float t=waterTime*.42;
-            float swell=sin(p.y*1.7+.47*sin(p.x*.61+t)+.28*sin(p.x*1.4-t)-t);
-            float broken=smoothstep(.12,.83,sin(p.x*.92+p.y*.24+t)+.4*sin(p.x*2.03-t));
-            float glint=smoothstep(.91,.99,swell)*broken*(1.-smoothstep(.22,.80,fwidth(swell)));
-            diffuseColor.rgb*=.96+.075*sin(p.x*.48+p.y*.35+t);
-            diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.70,.85,.71),.25*glint); `);
+            float chop=sin(dot(waterPoint,vec2(1.4,3.1))-3.9*waterTime+.65*sin(waterPoint.x+waterTime));
+            float glint=smoothstep(.66,.96,chop)*(1.-smoothstep(.15,1.,fwidth(chop)));
+            float crest=smoothstep(.015,.20,waveHeight);
+            float front=length(waterPoint-waterImpact.xy)-2.8*waterImpact.z;
+            float foam=waterImpact.w*exp(-5.*front*front-1.6*max(0.,waterImpact.z));
+            diffuseColor.rgb*=.80+.30*crest;
+            diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.73,.91,.84),clamp(.32*crest*glint+foam,0.,.87));`);
     };
-    return {mat,origin,heading};
+    return {mat,origin,heading,impact};
 }
 
 // Painted cutouts turn about their roots, so the same silhouette holds up
