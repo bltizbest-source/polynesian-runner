@@ -1,7 +1,7 @@
 import {seaLevel,surfaceHeight,forEachSplashDrop} from './water.js';
 import {courses,routePoint,cableHeight,openSpan,viewPoint} from './courses.js';
 import {renderPixelRatio} from './viewport.js?v=35';
-import {ease} from './motion.js';
+import {ease,stridePhase,runStride,walkStride,gallopStride} from './motion.js';
 import {caveFaces,tripStoneAt} from './cave.js';
 // World units are metres. The camera looks along +z, with the runner at z = 8.
 export function createScene(canvas, laneWidth) {
@@ -318,15 +318,19 @@ export function createScene(canvas, laneWidth) {
         }
         if(clipped.length>=3)polygon('#'+face.color.toString(16),clipped.map(p=>project(...p)));
     }
-    function beast(x,z,distance,wake){
+    function beast(x,z,distance,wake,intro){
         if(!ridgeback.naturalWidth)return;
         const [px,py]=project(x,0,z),scale=focal/z;
-        const phase=wake==null ? Math.floor(distance*2.28/(Math.PI*2)*8)%8 : Math.round(wake*7);
+        // The first three rows hold 24 gallop poses. The final rows show the
+        // wake-up and the first accelerating bound at the cave entrance.
+        let frame=Math.floor(24*stridePhase(distance,gallopStride));
+        if(intro!=null && intro<5.65)frame=24+Math.round(wake*7);
+        else if(intro!=null && intro<6.25)frame=32+Math.round((intro-5.65)/.60*7);
         ellipse('#3e40474d',px,py,scale*.52,scale*.18);
-        ctx.drawImage(ridgeback,phase*240,wake==null?0:224,240,224,px-scale*1.50,py-scale*1.85,
+        ctx.drawImage(ridgeback,frame%8*240,Math.floor(frame/8)*224,240,224,px-scale*1.50,py-scale*1.85,
             scale*3.00,scale*2.80);
     }
-    function runner(player,distance,active,stumble,z,hasGround) {
+    function runner(player,distance,active,stumble,z,hasGround,intro) {
         const scale=focal/z, x=center+player.x*scale,ground=horizon+2.9*scale;
         if(hasGround)ellipse('#3e40474d',x,ground,scale*.37,scale*.10);
         const grip=rider.naturalWidth?(player.grip||0):0;
@@ -337,16 +341,18 @@ export function createScene(canvas, laneWidth) {
             if(grip>.999)return;
         }
         if(!athlete.naturalWidth)return;
-        const phase=Math.floor(distance/4.25*8)%8;
-        let frame=phase,row=0;
-        if(!active){row=2;frame=7;}
-        else if(player.kneeling>.05){row=1;frame=Math.round(player.kneeling*7);}
-        else if(player.fallen>.05){row=0;frame=2;}
-        else if(player.crouch>.08){row=1;frame=Math.round(player.crouch*7);}
-        else if(player.y>.08){row=2;frame=Math.min(6,phase);}
+        const walking=intro!=null && intro<2.8;
+        const cycle=stridePhase(distance,walking?walkStride:runStride);
+        const gait=Math.floor(24*cycle);
+        let frame=gait%8,row=Math.floor(gait/8)+(walking?3:0);
+        if(!active){row=7;frame=7;}
+        else if(player.crouch>.08){row=6;frame=Math.round(player.crouch*7);}
+        else if(player.y>.08){row=7;frame=Math.min(6,Math.floor(cycle*8));}
         let actionRow=0,u=0,weight=0,mirror=1;
         if(actions.naturalWidth){
-            if(player.drop){
+            if(intro!=null && intro>=2.8 && intro<6.25){
+                actionRow=6;u=(intro-2.8)/3.45;weight=1;
+            }else if(player.drop){
                 actionRow=player.drop.kind==='corner'?5:player.drop.kind==='zipline'?4:3;
                 u=player.drop.phase;weight=ease(u/.12);mirror=player.drop.direction;
             }else if(player.impact){
@@ -361,8 +367,8 @@ export function createScene(canvas, laneWidth) {
             const wx=origin.x+Math.cos(origin.heading)*player.x,wz=origin.z+Math.sin(origin.heading)*player.x;
             ctx.beginPath();ctx.rect(0,0,w,ground-surfaceHeight(wx,wz,waterTime)*scale);ctx.clip();
         }
-        ctx.translate(x,ground-(player.y+.26*player.fallen)*scale);
-        ctx.rotate((player.laneVelocity||0)*.012+stumble*.61+player.fallen*1.48+player.kneeling*.14);
+        ctx.translate(x,ground-player.y*scale);
+        ctx.rotate((player.laneVelocity||0)*.012+stumble*.61);
         if(weight<1){
             ctx.globalAlpha=(1-weight)*(1-grip);
             ctx.drawImage(athlete,frame*160,row*224,160,224,-.75*scale,-1.92*scale,1.5*scale,2.1*scale);
@@ -370,7 +376,9 @@ export function createScene(canvas, laneWidth) {
         if(weight>0){
             ctx.scale(mirror,1);
             ctx.globalAlpha=weight*(1-grip);
-            ctx.drawImage(actions,Math.round(u*19)*176,actionRow*154,176,154,
+            // The longer cave sequence spans three 20-frame rows.
+            const sample=Math.round(u*(actionRow===6?59:19));
+            ctx.drawImage(actions,sample%20*176,(actionRow+Math.floor(sample/20))*154,176,154,
                 -1.76*scale,-2.43*scale,3.52*scale,3.08*scale);
         }
         ctx.restore();
@@ -479,11 +487,11 @@ export function createScene(canvas, laneWidth) {
             items.push({z:7,draw:()=>grab(player.x,7,chase.hold)});
         }else{
             const z=8+pullback-chase.stumble*.48;
-            items.push({z,draw:()=>runner(player,strideDistance,state!=='start',chase.stumble,z,!openSpan(course,distance) && !chase.failure)});
+            items.push({z,draw:()=>runner(player,strideDistance,state!=='start',chase.stumble,z,!openSpan(course,distance) && !chase.failure,opening?chase.intro:null)});
         }
         if(state!=='start' && !gripped){
             const z=8+pullback-(.8+chase.lead+chase.stumble*.48);
-            if(z>1.5 && !chase.failure && !openSpan(course,distance+z-runnerDepth))items.push({z,draw:()=>beast(chase.x,z,chase.stride,opening && chase.intro<5.65 ? chase.wake : null)});
+            if(z>1.5 && !chase.failure && !openSpan(course,distance+z-runnerDepth))items.push({z,draw:()=>beast(chase.x,z,chase.stride,chase.wake,opening?chase.intro:null)});
         }
         items.sort((a,b)=>b.z-a.z).forEach(item=>item.draw());
         const shade=ctx.createLinearGradient(0,0,portrait?0:w,portrait?h:0);

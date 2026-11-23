@@ -1,7 +1,7 @@
 import * as T from './vendor/three.module.min.js';
 import {paintedMaterial} from './character-material.js';
 import {createNavigatorHead} from './navigator.js';
-import {ease,impactPose} from './motion.js';
+import {ease,impactPose,footPath,runStride,walkStride,stridePhase} from './motion.js';
 
 // The character faces -Z. Profiles describe elliptical cross-sections in metres.
 export function createRunner(scene) {
@@ -302,13 +302,14 @@ export function createRunner(scene) {
     spine.add(shoulders);spine.updateWorldMatrix(true,true);
     shoulders.bind(new T.Skeleton([spine,...limbs.map(l=>l.arm.anchor)]));
     shoulders.castShadow=true;shoulders.frustumCulled=false;
+    const inversePelvis=new T.Quaternion(),ankleTarget=new T.Vector3();
     let lastTime=0,airborne=false,impact=0;
     const mix=T.MathUtils.lerp;
     return function pose(state,distance,p,t,menu,stumble=0,bite=null,hold=0,intro=0){
         const dt=Math.min(.08,Math.max(0,t-lastTime));lastTime=t;
         const opening=state==='intro';
         const glance=opening ? Math.sin(Math.PI*T.MathUtils.smoothstep(intro,3.4,6.1)) : 0;
-        const walking=opening && intro<2.8;
+        const walking=opening && intro<4.62;
         const falling=p.drop, pivot=p.pivot;
         const collision=p.impact && impactPose(p.impact.kind,p.impact.phase);
         const drop=falling?ease(falling.phase/.52):0;
@@ -316,8 +317,11 @@ export function createRunner(scene) {
         if(running && !p.y && airborne)impact=1;
         if(!running)impact=0;
         airborne=p.y>0;impact*=Math.exp(-11*dt);
-        const cycle=running?distance/(walking?1.65:4.25):0,angle=cycle*2*Math.PI;
-        const c=p.crouch, travel=running?(1-c)*(1-air)*(1-drop)*(1-(collision?.weight||0))*(walking?.72:1):0;
+        const stride=walking?walkStride:runStride, stance=walking?.54:.177;
+        const cycle=running?stridePhase(distance,stride):0,angle=cycle*2*Math.PI;
+        const support=Math.cos(angle-stance*Math.PI);
+        const drive=opening && !walking?ease((intro-5.17)/1.15):1;
+        const c=p.crouch, travel=running?drive*(1-c)*(1-air)*(1-drop)*(1-(collision?.weight||0))*(1-Math.max(p.fallen,p.kneeling)):0;
         const {fallen, kneeling} = p;
         const lean=T.MathUtils.clamp((p.laneVelocity||0)*.12,-1.55,1.55), breath=Math.sin(t*2.2)*.008;
         root.position.set(p.x,p.y,stumble*.48);root.rotation.z=-lean*.105-stumble*.61;
@@ -326,21 +330,25 @@ export function createRunner(scene) {
             root.rotation.y+=pivot.yaw;
             root.rotation.z-=pivot.lean*.26;
         }
-        const hipY=mix(.845-.032*Math.cos(angle*2-1.05)*travel-.086*impact,.335,c);
-        hips.position.set(.021*Math.sin(angle)*travel,hipY,0);
+        const load=Math.cos(2*(angle-Math.PI*stance));
+        const height=walking?.815+.016*load:.815-.040*load;
+        const hipY=mix(.845+(height-.845)*travel-.086*impact,.335,c);
+        hips.position.set(-.021*support*travel,hipY,0);
         // Pivot at the pelvis so the shoulder lands beside the hip. The trailing
         // leg folds under the body as the hands push it back onto one knee.
         hips.position.y = mix(hipY, .255, fallen);
         hips.position.y = mix(hips.position.y, .44, kneeling);
         hips.rotation.x = -.24*fallen - .16*kneeling;
-        hips.rotation.y=.1*Math.sin(angle)*travel;
-        spine.rotation.set(-.08-.12*travel-.93*c-.12*air+breath,-.23*Math.sin(angle)*travel,.032*Math.sin(angle)*travel);
-        hips.rotation.z=.038*Math.cos(angle-.55)*travel + 1.48*fallen + .13*kneeling;
+        hips.rotation.y=-.112*Math.cos(angle-.2)*travel;
+        spine.rotation.set(-.08+((walking?-.02:-.15)+.028*load)*travel-.93*c-.12*air+breath,
+            .235*Math.cos(angle-.36)*travel,-.055*support*travel);
+        hips.rotation.z=-.050*support*travel + 1.48*fallen + .13*kneeling;
         spine.rotation.y-=.45*glance+.26*fallen;
         spine.rotation.x-=.16*fallen+.50*kneeling;
         spine.rotation.x+=walking ? .12 : 0;
         neck.rotation.x=-spine.rotation.x*.73;
-        neck.rotation.y=-.55*spine.rotation.y-lean*.12-1.34*glance;
+        neck.rotation.y=-.78*(hips.rotation.y+spine.rotation.y)-lean*.12-1.34*glance;
+        neck.rotation.z=-(hips.rotation.z+spine.rotation.z)*.78*travel;
         if(pivot){
             hips.position.y-=.13*pivot.plant;
             spine.rotation.y-=pivot.lean*.32;
@@ -364,37 +372,43 @@ export function createRunner(scene) {
         wrap.rotation.z=.032*Math.sin(angle)*travel;
         knot.rotation.x=.08*Math.sin(angle*2)*travel;
         tails.rotation.x=-.16-.58*travel-.18*air-.12*Math.sin(angle)*travel;
-        tails.rotation.z=.13*Math.sin(angle*.5)*travel+(pivot?.lean||0)*.35;
+        tails.rotation.z=.13*Math.sin(angle-.7)*travel+(pivot?.lean||0)*.35;
         flask.rotation.x=-.06+.13*Math.sin(angle-.6)*travel+.14*air;
         tie.rotation.x=-.22-.35*travel+.12*Math.sin(angle)*travel;
+        inversePelvis.copy(hips.quaternion).invert();
         for(const {s,leg,foot,arm,wrist} of limbs){
-            const phase=(cycle+(s>0?.5:0))%1;
-            // During stance the ankle travels backward with the paving. The
-            // recovery arc lifts the heel and brings the foot forward again.
-            const stance=walking?.52:.19, swing=Math.max(0,(phase-stance)/(1-stance));
-            const strideLength=walking?1.65:4.25;
-            const stride=.5*strideLength*stance;
-            const z=phase<stance? -stride+strideLength*phase : stride*Math.cos(swing*Math.PI);
-            const lift=(walking?.09:.29)*Math.sin(swing*Math.PI)**1.5;
-            let targetZ=mix(s*.055,z,travel);
-            let targetY=.066+lift*travel;
+            const phase=stridePhase(cycle,1,s>0?.5:0);
+            const step=footPath(phase,stride,stance,walking?.11:.395);
+            const contact=Math.min(1,phase/stance);
+            const roll=phase<stance
+                ? .18*(1-ease(contact/.43))-(walking?.43:.70)*ease((contact-.47)/.53)
+                : mix(walking?-.43:-.70,.18,ease((step.swing-.12)/.66));
+            const pitch=roll*travel;
+            const cos=Math.cos(pitch),sin=Math.sin(pitch);
+            const sole=.041*cos-.058*sin+Math.hypot(.022*cos,.128*sin);
+            let targetZ=mix(s*.055,step.z,travel);
+            let targetY=sole+.003+step.y*travel;
             targetZ=mix(targetZ,s*.29,air);targetY+=air*(s>0?.31:.18);
             targetZ=mix(targetZ,s>0?-.69:.27,c);
-            const down=hipY-targetY;
+            // Undo the pelvis sway and twist before solving for the ankle.
+            // The sandal can stay on its mark while the torso passes over it.
+            ankleTarget.set(leg.anchor.position.x,targetY,targetZ).sub(hips.position)
+                .applyQuaternion(inversePelvis).sub(leg.anchor.position);
+            const down=mix(hipY-targetY,Math.hypot(ankleTarget.x,ankleTarget.y),travel);
+            targetZ=mix(targetZ,ankleTarget.z,travel);
             const reach=T.MathUtils.clamp(Math.hypot(down,targetZ),.035,thigh+calf-.0001);
             const knee=Math.acos(T.MathUtils.clamp((reach*reach-thigh*thigh-calf*calf)/(2*thigh*calf),-1,1));
             const upper=Math.atan2(-targetZ,down)+Math.atan2(calf*Math.sin(knee),thigh+calf*Math.cos(knee));
-            leg.anchor.rotation.set(upper,0,s*.095*c);
+            const lateral=Math.atan2(ankleTarget.x,-ankleTarget.y);
+            leg.anchor.rotation.set(upper,0,lateral*travel+s*.095*c,'ZXY');
             leg.bend.rotation.x=-knee;
-            // The heel touches first, then lifts as the weight rolls onto the toes.
-            const footPitch=phase<stance
-                ? mix(.16,-.38,T.MathUtils.smoothstep(phase,0,stance))
-                : mix(-.38,.16,T.MathUtils.smoothstep(swing,0,.72));
-            foot.rotation.x=knee-upper+footPitch*travel;
-            const counter=Math.cos(phase*2*Math.PI)*travel;
-            arm.anchor.rotation.set(-.28-.82*counter+s*.46*air-.23*c,0,s*(.12+.27*c+.13*air));
-            arm.bend.rotation.x=.62+.66*travel-.25*counter+.32*air;
-            wrist.rotation.x=.14*Math.sin(phase*2*Math.PI-.55)*travel;
+            foot.rotation.x=knee-upper+pitch;
+            foot.rotation.z=-(hips.rotation.z+leg.anchor.rotation.z)*travel;
+            const counter=Math.cos(phase*2*Math.PI-.34)*travel;
+            arm.anchor.rotation.set(-.28-(walking?.50:.87)*counter+s*.46*air-.23*c,
+                -s*.12*counter,s*(.12+.27*c+.13*air));
+            arm.bend.rotation.x=.62+(walking?.18:.68)*travel-.31*counter+.32*air;
+            wrist.rotation.x=.15*Math.sin(phase*2*Math.PI-.70)*travel;
             // Tuck the lower arm at impact; plant the near foot and unfold the
             // other leg from the ground before blending back into the run.
             leg.anchor.rotation.x = mix(leg.anchor.rotation.x, s>0 ? .60 : .15, fallen);

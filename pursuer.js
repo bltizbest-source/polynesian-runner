@@ -1,4 +1,5 @@
 import * as T from './vendor/three.module.min.js';
+import {ease,footPath,gallopStride,stridePhase} from './motion.js';
 import {paintedMaterial} from './character-material.js';
 
 // An obsidian ridgeback with a heavy forequarter and a springing hind gait.
@@ -131,7 +132,11 @@ export function createPursuer(scene) {
             form(paw,hull,plate,x,-.060,z,.037,.029,.051);
             hook(paw,ivory,[x,-.058,z-.030],[x,-.068,z-.066],[x,-.080,z-.077],.013);
         }
-        legs.push({hip,ankle,paw,s,rear});
+        legs.push({hip,ankle,paw,rear,
+            offset:(rear?0:.43)+(s>0?.084:0),
+            thigh:Math.hypot(kneeY,kneeZ),shin:Math.hypot(length,offset),
+            upperRest:Math.atan2(-kneeZ,kneeY),lowerRest:Math.atan2(-offset,length)});
+
     }
     // Teeth, claws and scales move with their parent joint. Batch these
     // rigid pieces once so detail doesn't add a draw call for every scale.
@@ -161,6 +166,7 @@ export function createPursuer(scene) {
             const batch=new T.Mesh(g,mat);batch.castShadow=true;joint.add(batch);
         }
     });
+    const pawTarget=new T.Vector3(),inverseBody=new T.Quaternion();
     return function animate(state,player,t,chase) {
         root.visible=state!=='start' && (state==='intro' || chase.lead<14);
         if(!root.visible)return;
@@ -170,20 +176,28 @@ export function createPursuer(scene) {
         root.position.set(chase.x,0,gap+chase.stumble*.48+hoist*.58);
         root.rotation.y=Math.atan2(chase.x-player.x,gap)*.81;
         const opening=state==='intro', awake=opening?chase.wake:1;
-        const run=opening ? T.MathUtils.smoothstep(chase.intro,5.65,6.25) : Number(chase.lead>0);
+        const capture=state==='catching'||(state==='over' && chase.hold>0);
+        const settling=capture?1-ease(chase.hold/.31):0;
+        const run=opening?T.MathUtils.smoothstep(chase.intro,5.65,6.25):capture?settling:Number(chase.lead>0);
         root.rotation.y=T.MathUtils.lerp(.58,root.rotation.y,awake);
         body.scale.y=.84+.16*awake;
         const blink=1-.91*Math.max(0,Math.cos(t*1.7+.8))**100;
         for(const eye of eyes)eye.scale.y=Math.max(.012,awake*blink);
         ears.forEach((ear,i)=>{ear.rotation.x=-.64*(1-awake)+.13*Math.sin(t*2.4+i)*awake;});
-        const phase=chase.stride*2.28;
-        const lunge=state==='catching'?Math.sin(Math.PI*Math.max(0,1-chase.lead/.85)):0;
-        const pinned=state==='over'||chase.lead===0;
-        body.position.y=-.19*(1-awake)+run*.081*Math.abs(Math.sin(phase))+.013*Math.sin(t*3)+lunge*.19;
-        body.rotation.x=.09*Math.sin(phase)*run+lunge*.24-(pinned?.19:0)+hoist*.36;
-        head.rotation.x=.1*Math.cos(phase+.5)*run-.07-(pinned?.24:0)+hoist*.63;
-        head.rotation.z=hoist*(.13+.075*Math.sin(t*6));
-        jaw.rotation.x=-(.14+.075*Math.sin(phase)+lunge*.51)*(1-grip)-.055*grip;
+        // Let the last bound carry into the brace as the jaws take hold.
+        const brake=capture?Math.min(chase.hold,.31)/.31:0;
+        const distance=chase.stride+1.12*(2*brake-brake*brake);
+        const phase=stridePhase(distance,gallopStride)*Math.PI*2;
+        const reach=capture?Math.sin(Math.PI*ease(chase.hold/.39)):0;
+        const bound=Math.cos(phase-.76), gather=Math.cos(phase-2.60);
+        body.position.y=-.19*(1-awake)+run*(-.090-.049*Math.cos(2*phase-1.3))
+            +.007*Math.sin(t*3)*(1-run)+reach*.065;
+        body.rotation.x=run*.115*bound+reach*.17-.15*grip+hoist*.34;
+        body.rotation.z=run*.023*Math.sin(phase-.45);
+        head.position.z=-.49-.042*gather*run-.11*reach;
+        head.rotation.x=-.070-body.rotation.x*.77+.038*gather*run-.17*grip+hoist*.67;
+        head.rotation.z=-body.rotation.z*.8+hoist*(.13+.075*Math.sin(t*6));
+        jaw.rotation.x=-(.14+.04*gather*run+reach*.59)*(1-grip)-.055*grip;
         if(opening){
             head.rotation.x+=.66*(1-awake)-.24*awake*(1-run);
             jaw.rotation.x*=awake;
@@ -191,12 +205,30 @@ export function createPursuer(scene) {
             jaw.rotation.x-=.57*snap;
             head.rotation.x-=.14*snap;
         }
-        tailBase.rotation.y=.74*(1-awake)+awake*.34*Math.sin(t*4.1);tip.rotation.y=.60*(1-awake)+awake*.37*Math.sin(t*4.1-.8);
-        for(const {hip,ankle,paw,s,rear} of legs){
-            const swing=Math.sin(phase+(rear?2.9:0)+s*.51);
-            hip.rotation.x=swing*.72*run+(rear?-.72:.68)*(1-awake);
-            ankle.rotation.x=-.19-Math.max(0,swing)*.78*run;
-            paw.rotation.x=-(hip.rotation.x+ankle.rotation.x)*(.66+.18*Math.cos(phase));
+        const idleTail=Math.sin(t*2.1);
+        tailBase.rotation.y=.74*(1-awake)+awake*(.13*idleTail+.14*run*Math.sin(phase-.9));
+        tip.rotation.y=.60*(1-awake)+awake*(.15*Math.sin(t*2.1-.8)+.20*run*Math.sin(phase-1.65));
+        tailBase.rotation.x=run*(-.13+.13*Math.cos(phase-.8));
+        tip.rotation.x=run*.22*Math.cos(phase-1.53);
+        inverseBody.copy(body.quaternion).invert();
+        for(const {hip,ankle,paw,rear,offset,thigh,shin,upperRest,lowerRest} of legs){
+            const beat=stridePhase(distance,gallopStride,-offset);
+            const stance=rear?.157:.163,step=footPath(beat,gallopStride,stance,rear?.24:.20);
+            const push=beat<stance?ease((beat/stance-.40)/.60):1-ease(step.swing/.55);
+            const pitch=-(rear?.56:.40)*push;
+            const pawHeight=.092+.17*Math.max(0,-Math.sin(pitch));
+            pawTarget.set(hip.position.x,pawHeight+step.y,hip.position.z+step.z)
+                .sub(body.position).applyQuaternion(inverseBody).sub(hip.position);
+            const down=-pawTarget.y,z=pawTarget.z;
+            const length=T.MathUtils.clamp(Math.hypot(down,z),Math.abs(thigh-shin)+.0001,thigh+shin-.0001);
+            const bend=(rear?-1:1)*Math.acos(T.MathUtils.clamp(
+                (length*length-thigh*thigh-shin*shin)/(2*thigh*shin),-1,1));
+            const upper=Math.atan2(-z,down)-Math.atan2(shin*Math.sin(bend),thigh+shin*Math.cos(bend));
+            const hipAngle=upper-upperRest,kneeAngle=bend+upperRest-lowerRest;
+            hip.rotation.x=T.MathUtils.lerp((rear?-.72:.68)*(1-awake),hipAngle,run);
+            ankle.rotation.x=T.MathUtils.lerp(-.19,kneeAngle,run);
+            paw.rotation.x=T.MathUtils.lerp(-.7*(hip.rotation.x+ankle.rotation.x),
+                pitch-hipAngle-kneeAngle-body.rotation.x,run);
         }
         return grip>0 ? bite.getWorldPosition(bitePosition) : null;
     };

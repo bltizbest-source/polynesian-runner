@@ -4,6 +4,24 @@ export function ease(value){
     const t=Math.max(0,Math.min(1,value));
     return t*t*(3-2*t);
 }
+// Distance per full gait cycle, shared with the prerendered animation.
+export const runStride=4.25, walkStride=1.52, gallopStride=3.95;
+export function stridePhase(distance,length,offset=0){
+    const cycle=distance/length+offset;
+    return cycle-Math.floor(cycle);
+}
+
+// While planted, the foot moves backward at exactly the speed of the trail.
+// The swing retains that velocity at both ends and folds early after toe-off.
+export function footPath(phase,length,stance,clearance){
+    const span=length*stance;
+    if(phase<stance)return {z:length*phase-span/2,y:0,swing:0};
+    const u=(phase-stance)/(1-stance),mid=u*(1-u);
+    const carry=length*(1-stance)*mid*(1-2*u)*Math.exp(-15*mid);
+    const arc=Math.sin(Math.PI*u);
+    return {z:span*(.5-ease(u))+carry,y:clearance*arc**1.6*(1.42-.84*u),swing:u};
+}
+
 export function cornerMotion(turn,metres,delay=0){
     if(!turn)return null;
     const travel=metres-turn[0], d=travel-delay, direction=turn[1];
