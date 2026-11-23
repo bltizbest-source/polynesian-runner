@@ -121,3 +121,6 @@ dialog p+p{margin-top:8px}
 #title em{font-style:italic;font-weight:500;color:#ffd691}
 #start,.done{background:linear-gradient(165deg,#ffe1a3,#efb869);box-shadow:0 3px 0 #9a693a,0 6px 20px #122f2b33}
 .hud .stats>span,#route-hud{background:#183b36e8;box-shadow:inset 0 0 0 1px #efe3b52b}
+
+.offline-state{margin-top:10px;color:#fff5df;font-size:12px;line-height:1.5}
+#offline-retry{font:inherit;color:inherit;background:transparent;border:0;text-decoration:underline;padding:6px}

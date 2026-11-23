@@ -5,7 +5,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#264a3b"><title>Polynesian Runner</title>
-<link rel="icon" href="favicon.png" sizes="32x32"><link rel="icon" href="assets/temple-mark.svg" type="image/svg+xml" sizes="any"><link rel="apple-touch-icon" href="assets/apple-touch-icon.png"><link rel="manifest" href="manifest.json"><link rel="stylesheet" href="style.css?v=35">
+<link rel="icon" href="favicon.png" sizes="32x32"><link rel="icon" href="assets/temple-mark.svg" type="image/svg+xml" sizes="any"><link rel="apple-touch-icon" href="assets/apple-touch-icon.png"><link rel="manifest" href="manifest.json"><link rel="stylesheet" href="style.css?v=36">
 </head>
 <body data-state="start">
 <div class="stage">
@@ -28,6 +28,8 @@
     <label id="level-choice" hidden>Start in <select id="level-select"></select></label>
     <div class="actions"><button id="start" disabled><span class="play-icon" aria-hidden="true"></span><span id="start-label">Loading…</span></button>
     <button id="home" hidden>Main menu</button></div>
+    <div class="offline-state"><span id="offline-status" role="status"></span>
+      <button id="offline-retry" type="button" hidden>Retry download</button></div>
   </main>
 <footer><span class="control-label">Controls</span><div class="keys"><span><kbd>←</kbd><kbd>→</kbd> Move / turn</span><span><kbd>Space</kbd> Jump</span><span><kbd>↓</kbd> Duck</span></div><div class="touch">Swipe ← → to move or turn · ↑ jump · ↓ slide</div></footer>
 <button id="skip" hidden>Skip intro</button>
@@ -40,13 +42,14 @@
     <button class="done">Got it</button>
   </form>
 </dialog>
+<script type="module" src="./offline.js"></script>
 <script type="module">
 const guide = document.getElementById('guide');
 document.getElementById('help').addEventListener('click', () => guide.showModal());
 try {
     const {fitGameScreen} = await import('./viewport.js?v=35');
     fitGameScreen();
-    const {initializeGame} = await import('./game.js?v=35');
+    const {initializeGame} = await import('./game.js?v=36');
     await initializeGame();
 } catch (error) {
     console.error('Game startup failed', error);

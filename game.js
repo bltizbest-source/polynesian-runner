@@ -440,6 +440,3 @@ export async function initializeGame() {
     el('start-label').textContent = 'Start run';
     el('start').disabled = false;
 }
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(error => console.warn('Offline mode unavailable', error));
-}
