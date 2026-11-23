@@ -2,12 +2,9 @@ import {courses,courseItems,cableHeight,openSpan,runnerPoint,trackPoint} from '.
 import {cornerMotion} from './motion.js';
 import {tripStoneAt} from './cave.js';
 import {createScene} from './scene.js';
-import {createTempleScene} from './temple.js';
 const canvas = document.getElementById('world');
 let draw;
-try { draw = createTempleScene(canvas); }
-catch (error) {
-    console.warn('Using the canvas renderer', error);
+function useCanvasRenderer() {
     const fallback = canvas.cloneNode();
     canvas.replaceWith(fallback);
     draw = createScene(fallback, 1.55);
@@ -58,7 +55,7 @@ function clearInput() {
     player.duck = false;
 }
 function start() {
-    if (state !== 'start' && state !== 'over') return;
+    if (!draw || (state !== 'start' && state !== 'over')) return;
     if(state==='start')startingLevel=level;
     selectLevel(startingLevel);
     state = level===0 ? 'intro' : 'playing';
@@ -130,7 +127,6 @@ function jump() {
     }
 }
 el('start').addEventListener('click', start);
-el('help').addEventListener('click', () => el('guide').showModal());
 el('home').addEventListener('click', () => {
     state = 'start';
     document.body.dataset.state = state;
@@ -415,7 +411,21 @@ function frame(now) {
     draw(state, courseDistance, player, visibleItems, time, menuBlend, chase, courses[level]);
     requestAnimationFrame(frame);
 }
-requestAnimationFrame(frame);
+export async function initializeGame() {
+    try {
+        const {createTempleScene} = await import('./temple.js');
+        draw = createTempleScene(canvas);
+        frame(performance.now());
+        canvas.addEventListener('webglcontextlost', useCanvasRenderer, {once:true});
+    } catch (error) {
+        console.warn('Using the canvas renderer', error);
+        useCanvasRenderer();
+        frame(performance.now());
+    }
+    el('level-choice').hidden = false;
+    el('start-label').textContent = 'Start run';
+    el('start').disabled = false;
+}
 if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js').catch(error => console.warn('Offline mode unavailable', error));
 }
